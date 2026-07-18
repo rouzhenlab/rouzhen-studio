@@ -75,7 +75,7 @@ fileInput.addEventListener("change", () => {
 uploadBtn.addEventListener("click", () => {
   if (!selectedFile) return;
 
-  const savedToken = localStorage.getItem(CONFIG.TOKEN_STORAGE_KEY);
+  const savedToken = getStoredToken();
   if (!savedToken) {
     pendingUploadAfterToken = true;
     openTokenOverlay();
@@ -98,18 +98,22 @@ function closeTokenOverlay() {
   tokenOverlay.hidden = true;
 }
 
-tokenCancelBtn.addEventListener("click", () => {
+tokenCancelBtn.addEventListener("click", (event) => {
+  event.preventDefault();
   pendingUploadAfterToken = false;
   closeTokenOverlay();
 });
 
-tokenConfirmBtn.addEventListener("click", () => {
+tokenConfirmBtn.addEventListener("click", (event) => {
+  event.preventDefault();
+
   const token = tokenInput.value.trim();
   if (!token) {
     setStatus("请输入口令");
     return;
   }
-  localStorage.setItem(CONFIG.TOKEN_STORAGE_KEY, token);
+
+  saveStoredToken(token);
   closeTokenOverlay();
 
   if (pendingUploadAfterToken) {
@@ -117,6 +121,33 @@ tokenConfirmBtn.addEventListener("click", () => {
     startUpload(token);
   }
 });
+
+// ------------------------------
+// 口令存储辅助
+// ------------------------------
+function getStoredToken() {
+  try {
+    return localStorage.getItem(CONFIG.TOKEN_STORAGE_KEY);
+  } catch (err) {
+    return "";
+  }
+}
+
+function saveStoredToken(token) {
+  try {
+    localStorage.setItem(CONFIG.TOKEN_STORAGE_KEY, token);
+  } catch (err) {
+    setStatus("浏览器存储不可用，口令将只在本次会话中生效");
+  }
+}
+
+function clearStoredToken() {
+  try {
+    localStorage.removeItem(CONFIG.TOKEN_STORAGE_KEY);
+  } catch (err) {
+    // 忽略存储异常
+  }
+}
 
 // ------------------------------
 // 上传逻辑
@@ -139,7 +170,7 @@ async function startUpload(token) {
 
     if (response.status === 401 || response.status === 403) {
       // 口令错误：清除本地口令，重新弹出输入
-      localStorage.removeItem(CONFIG.TOKEN_STORAGE_KEY);
+      clearStoredToken();
       setStatus("口令错误，请重新输入");
       uploadBtn.disabled = false;
       pendingUploadAfterToken = true;
