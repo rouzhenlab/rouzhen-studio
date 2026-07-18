@@ -1,0 +1,216 @@
+/* ROUZHEN Studio — 简洁 / 安静 / 自然 / 留白 */
+
+:root {
+  --color-bg: #fafaf8;
+  --color-text: #2b2b28;
+  --color-muted: #8a8a82;
+  --color-line: #e3e2dd;
+  --color-accent: #2b2b28;
+  --radius: 10px;
+  --space-unit: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+  min-height: 100vh;
+}
+
+/* 标题区 */
+
+.header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.header h1 {
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  margin: 0;
+  color: var(--color-text);
+}
+
+/* 上传区 */
+
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 40px;
+  border-bottom: 1px solid var(--color-line);
+  margin-bottom: 40px;
+}
+
+.size-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.preview-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.preview-img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: var(--radius);
+  background: #f0f0ec;
+}
+
+.file-name {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-muted);
+  word-break: break-all;
+  text-align: center;
+}
+
+/* 按钮 */
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 28px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  width: 100%;
+  max-width: 280px;
+}
+
+.btn:active {
+  opacity: 0.7;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-line);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* 结果区 */
+
+.result-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.result-img-wrap {
+  width: 100%;
+}
+
+.result-img {
+  width: 100%;
+  border-radius: var(--radius);
+  display: block;
+}
+
+.url-input {
+  width: 100%;
+  max-width: 320px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 状态提示 */
+
+.status-msg {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-muted);
+  min-height: 16px;
+  margin-top: 32px;
+}
+
+/* 口令浮层 */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.overlay-card {
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overlay-text {
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.token-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-line);
+  background: #fff;
+  font-size: 14px;
+  text-align: center;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.overlay-actions .btn {
+  max-width: none;
+}
