@@ -5,7 +5,7 @@
 // 集中配置
 // ------------------------------
 const CONFIG = {
-  WORKER_URL: "https://rouzhen-upload.leathersy.workers.dev/upload", // TODO: 替换为实际部署的 Worker 地址
+  WORKER_URL: "/upload", // 同域 Pages Functions，不再走 workers.dev
   TOKEN_STORAGE_KEY: "rz_upload_token",
   SIZE_WARN_BYTES: 10 * 1024 * 1024, // 10MB，仅提示，不阻止
 };
