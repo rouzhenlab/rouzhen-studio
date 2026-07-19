@@ -296,23 +296,20 @@ downloadLibraryBtn.addEventListener("click", async () => {
       try {
         downloadLibraryBtn.textContent = `处理 ${written + skipped + 1}/${total}`;
 
-        // 解析本地路径: thumbnails/YYYY/MM/DD/filename-thumb.webp
+        // 本地扁平化: thumbnails/YYYY/filename-thumb.webp（点年份就看全部图）
         const relativePath = asset.thumbnail_key.replace("thumbnails/", "");
         // relativePath: YYYY/MM/DD/filename-thumb.webp
         const pathParts = relativePath.split("/");
         // pathParts: [YYYY, MM, DD, filename]
-
-        // 逐级创建日期目录
-        let currentDir = thumbDirHandle;
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          currentDir = await currentDir.getDirectoryHandle(pathParts[i], { create: true });
-        }
-
+        const year = pathParts[0];
         const fileName = pathParts[pathParts.length - 1];
+
+        // 只创建年份目录
+        const yearDir = await thumbDirHandle.getDirectoryHandle(year, { create: true });
 
         // 检查文件是否已存在
         try {
-          await currentDir.getFileHandle(fileName); // 不传 create:false，存在则成功
+          await yearDir.getFileHandle(fileName);
           skipped++;
           continue; // 已存在，跳过
         } catch (e) {
@@ -324,8 +321,8 @@ downloadLibraryBtn.addEventListener("click", async () => {
         if (!resp.ok) continue;
         const blob = await resp.blob();
 
-        // 写入本地
-        const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
+        // 写入本地年份目录
+        const fileHandle = await yearDir.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();

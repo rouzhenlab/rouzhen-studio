@@ -404,9 +404,9 @@ function render() {
       card.className = "card" + (selectedKeys.has(asset.key) ? " selected" : "");
       card.dataset.key = asset.key;
 
-      // 本地缩略图路径（相对路径）
+      // 本地缩略图路径（扁平化到年份目录）: thumbnails/YYYY/filename-thumb.webp
       const thumbLocal = asset.thumbnail_key
-        ? "./thumbnails/" + asset.thumbnail_key.replace("thumbnails/", "")
+        ? "./thumbnails/" + asset.thumbnail_key.replace("thumbnails/", "").split("/")[0] + "/" + asset.thumbnail_key.split("/").pop()
         : "";
 
       card.innerHTML = `
