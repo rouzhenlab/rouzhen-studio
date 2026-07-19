@@ -1,0 +1,339 @@
+// ROUZHEN Studio — gallery.js
+// 素材库页面：Token 保护 / 时间流浏览 / 多选复制 / 滚动加载
+
+// ------------------------------
+// 配置
+// ------------------------------
+const CONFIG = {
+  API_URL: "/api/assets",
+  TOKEN_STORAGE_KEY: "rz_upload_token",
+  PAGE_SIZE: 50,
+};
+
+// ------------------------------
+// DOM
+// ------------------------------
+const galleryGrid = document.getElementById("galleryGrid");
+const loadMoreWrap = document.getElementById("loadMoreWrap");
+const loadMoreBtn = document.getElementById("loadMoreBtn");
+const galleryStatus = document.getElementById("galleryStatus");
+const selectAllBtn = document.getElementById("selectAllBtn");
+const copySelectedBtn = document.getElementById("copySelectedBtn");
+
+const tokenOverlay = document.getElementById("tokenOverlay");
+const tokenInput = document.getElementById("tokenInput");
+const tokenCancelBtn = document.getElementById("tokenCancelBtn");
+const tokenConfirmBtn = document.getElementById("tokenConfirmBtn");
+
+// ------------------------------
+// 状态
+// ------------------------------
+let allAssets = [];         // 已加载的所有素材
+let selectedKeys = new Set(); // 选中的 asset key
+let nextCursor = null;
+let isLoading = false;
+let hasMore = true;
+
+// ------------------------------
+// 初始化：检查 Token → 加载数据
+// ------------------------------
+function init() {
+  const token = getStoredToken();
+  if (!token) {
+    openTokenOverlay();
+    return;
+  }
+  loadAssets(token);
+}
+
+// ------------------------------
+// 加载素材列表
+// ------------------------------
+async function loadAssets(token) {
+  if (isLoading || !hasMore) return;
+  isLoading = true;
+  setStatus("加载中…");
+
+  try {
+    const params = new URLSearchParams({ limit: String(CONFIG.PAGE_SIZE) });
+    if (nextCursor) params.set("cursor", nextCursor);
+
+    const response = await fetch(`${CONFIG.API_URL}?${params}`, {
+      headers: { "X-Upload-Token": token },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      clearStoredToken();
+      setStatus("口令错误，请重新输入");
+      openTokenOverlay();
+      isLoading = false;
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error("api-failed");
+    }
+
+    const data = await response.json();
+
+    allAssets = allAssets.concat(data.assets);
+    nextCursor = data.cursor;
+    hasMore = data.truncated;
+
+    renderGallery();
+
+    if (hasMore) {
+      loadMoreWrap.hidden = false;
+    } else {
+      loadMoreWrap.hidden = true;
+    }
+
+    setStatus(allAssets.length > 0 ? `共 ${allAssets.length} 张素材` : "暂无素材");
+  } catch (err) {
+    setStatus("加载失败，请检查网络");
+  } finally {
+    isLoading = false;
+  }
+}
+
+// ------------------------------
+// 渲染图库（按日期分组）
+// ------------------------------
+function renderGallery() {
+  // 按日期分组
+  const groups = {};
+  for (const asset of allAssets) {
+    const dateKey = asset.upload_time.slice(0, 10); // YYYY-MM-DD
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(asset);
+  }
+
+  // 按日期倒序排列
+  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+  galleryGrid.innerHTML = "";
+
+  for (const dateKey of sortedDates) {
+    // 日期标题
+    const dateHeader = document.createElement("div");
+    dateHeader.className = "gallery-date-header";
+    dateHeader.textContent = formatDateLabel(dateKey);
+    galleryGrid.appendChild(dateHeader);
+
+    // 图片网格
+    const grid = document.createElement("div");
+    grid.className = "gallery-day-grid";
+
+    for (const asset of groups[dateKey]) {
+      const card = document.createElement("div");
+      card.className = "gallery-card";
+      card.dataset.key = asset.key;
+
+      if (selectedKeys.has(asset.key)) {
+        card.classList.add("gallery-card--selected");
+      }
+
+      card.innerHTML = `
+        <div class="gallery-card-check">
+          <input type="checkbox" ${selectedKeys.has(asset.key) ? "checked" : ""}>
+        </div>
+        <img class="gallery-card-thumb" src="${asset.thumbnail_url}" alt="${asset.filename}"
+             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>'">
+        <div class="gallery-card-info">
+          <span class="gallery-card-name" title="${asset.filename}">${asset.filename}</span>
+        </div>
+      `;
+
+      // 点击卡片切换选中
+      card.addEventListener("click", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        toggleSelect(asset.key);
+      });
+
+      // checkbox 点击
+      const checkbox = card.querySelector("input[type=checkbox]");
+      checkbox.addEventListener("change", () => {
+        toggleSelect(asset.key);
+      });
+
+      grid.appendChild(card);
+    }
+
+    galleryGrid.appendChild(grid);
+  }
+}
+
+// ------------------------------
+// 选中逻辑
+// ------------------------------
+function toggleSelect(key) {
+  if (selectedKeys.has(key)) {
+    selectedKeys.delete(key);
+  } else {
+    selectedKeys.add(key);
+  }
+  updateSelectionUI();
+}
+
+function updateSelectionUI() {
+  // 更新卡片样式
+  const cards = galleryGrid.querySelectorAll(".gallery-card");
+  cards.forEach((card) => {
+    const key = card.dataset.key;
+    const isSelected = selectedKeys.has(key);
+    card.classList.toggle("gallery-card--selected", isSelected);
+    const checkbox = card.querySelector("input[type=checkbox]");
+    if (checkbox) checkbox.checked = isSelected;
+  });
+
+  // 更新按钮状态
+  copySelectedBtn.disabled = selectedKeys.size === 0;
+  selectAllBtn.textContent = selectedKeys.size === allAssets.length ? "取消全选" : "全选";
+}
+
+// ------------------------------
+// 全选 / 取消全选
+// ------------------------------
+selectAllBtn.addEventListener("click", () => {
+  if (selectedKeys.size === allAssets.length) {
+    selectedKeys.clear();
+  } else {
+    for (const asset of allAssets) {
+      selectedKeys.add(asset.key);
+    }
+  }
+  updateSelectionUI();
+});
+
+// ------------------------------
+// 复制选中 Markdown
+// ------------------------------
+copySelectedBtn.addEventListener("click", async () => {
+  if (selectedKeys.size === 0) return;
+
+  // 按时间顺序排列选中的素材
+  const selected = allAssets
+    .filter((a) => selectedKeys.has(a.key))
+    .sort((a, b) => new Date(b.upload_time) - new Date(a.upload_time));
+
+  const markdowns = selected.map(
+    (a) => a.markdown || `![${a.filename}](${a.url})`
+  );
+  const text = markdowns.join("\n\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus(`已复制 ${selected.length} 张图片的 Markdown`);
+  } catch (err) {
+    setStatus("复制失败，请手动复制");
+  }
+});
+
+// ------------------------------
+// 加载更多
+// ------------------------------
+loadMoreBtn.addEventListener("click", () => {
+  const token = getStoredToken();
+  if (token) loadAssets(token);
+});
+
+// 滚动到底部自动加载
+window.addEventListener("scroll", () => {
+  if (!hasMore || isLoading) return;
+  const scrollBottom = window.innerHeight + window.scrollY;
+  const docHeight = document.documentElement.scrollHeight;
+  if (docHeight - scrollBottom < 300) {
+    const token = getStoredToken();
+    if (token) loadAssets(token);
+  }
+});
+
+// ------------------------------
+// 口令浮层
+// ------------------------------
+function openTokenOverlay() {
+  tokenInput.value = "";
+  tokenOverlay.hidden = false;
+  tokenInput.focus();
+}
+
+function closeTokenOverlay() {
+  tokenOverlay.hidden = true;
+}
+
+tokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    tokenConfirmBtn.click();
+  }
+});
+
+tokenCancelBtn.addEventListener("click", () => {
+  closeTokenOverlay();
+  // 取消后跳回首页
+  window.location.href = "/";
+});
+
+tokenConfirmBtn.addEventListener("click", () => {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    setStatus("请输入口令");
+    return;
+  }
+
+  saveStoredToken(token);
+  closeTokenOverlay();
+  loadAssets(token);
+});
+
+// ------------------------------
+// Token 存储
+// ------------------------------
+function getStoredToken() {
+  try {
+    return localStorage.getItem(CONFIG.TOKEN_STORAGE_KEY);
+  } catch (err) {
+    return "";
+  }
+}
+
+function saveStoredToken(token) {
+  try {
+    localStorage.setItem(CONFIG.TOKEN_STORAGE_KEY, token);
+  } catch (err) {
+    // 忽略
+  }
+}
+
+function clearStoredToken() {
+  try {
+    localStorage.removeItem(CONFIG.TOKEN_STORAGE_KEY);
+  } catch (err) {
+    // 忽略
+  }
+}
+
+// ------------------------------
+// 工具
+// ------------------------------
+function formatDateLabel(dateKey) {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  if (dateKey === todayStr) return "今天";
+  if (dateKey === yesterdayStr) return "昨天";
+  return dateKey;
+}
+
+function setStatus(msg) {
+  galleryStatus.textContent = msg;
+}
+
+// ------------------------------
+// 启动
+// ------------------------------
+init();

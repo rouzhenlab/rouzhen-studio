@@ -1,0 +1,250 @@
+/* ROUZHEN Studio — gallery.css */
+/* 素材库页面样式 */
+
+:root {
+  --color-bg: #fafaf8;
+  --color-text: #2b2b28;
+  --color-muted: #8a8a82;
+  --color-line: #e3e2dd;
+  --color-accent: #2b2b28;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 容器 */
+
+.gallery-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 80px;
+  min-height: 100vh;
+}
+
+/* 头部 */
+
+.gallery-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.gallery-back {
+  font-size: 13px;
+  color: var(--color-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.gallery-back:hover {
+  color: var(--color-text);
+}
+
+.gallery-header h1 {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  margin: 0;
+  flex: 1;
+}
+
+.gallery-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 按钮 */
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn:active {
+  opacity: 0.7;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-line);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* 日期标题 */
+
+.gallery-date-header {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-muted);
+  padding: 16px 0 8px;
+  border-bottom: 1px solid var(--color-line);
+  margin-bottom: 8px;
+}
+
+/* 每日网格 */
+
+.gallery-day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* 素材卡片 */
+
+.gallery-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f0f0ec;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.gallery-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.gallery-card--selected {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.gallery-card-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+}
+
+.gallery-card-check input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.gallery-card-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-card-info {
+  padding: 6px 8px;
+}
+
+.gallery-card-name {
+  font-size: 10px;
+  color: var(--color-muted);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 加载更多 */
+
+.load-more {
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* 状态 */
+
+.gallery-status {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-muted);
+  min-height: 16px;
+  margin-top: 16px;
+}
+
+/* 口令浮层（复用主站样式） */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 10;
+}
+
+.overlay-card {
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overlay-text {
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.token-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-line);
+  background: #fff;
+  font-size: 14px;
+  text-align: center;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.overlay-actions .btn {
+  flex: 1;
+}
