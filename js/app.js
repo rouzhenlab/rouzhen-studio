@@ -44,6 +44,7 @@ let pendingUploadAfterToken = false;
 // 选图 & 本地预览
 // ------------------------------
 selectBtn.addEventListener("click", () => {
+  fileInput.value = "";
   fileInput.click();
 });
 
