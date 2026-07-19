@@ -112,12 +112,15 @@ async function handleUpload(request, env) {
   let thumbnailUrl = "";
 
   if (thumbnail && typeof thumbnail !== "string" && thumbnail.size > 0) {
-    const thumbFilename = filename.replace(ext, "") + "-thumb.webp";
+    // 根据实际 MIME 类型确定扩展名
+    const thumbExt = thumbnail.type === "image/webp" ? ".webp" : ".jpg";
+    const thumbFilename = filename.replace(ext, "") + "-thumb" + thumbExt;
     const thumbKey = `thumbnails/${datePath}/${thumbFilename}`;
 
     try {
-      await env.BUCKET.put(thumbKey, thumbnail.stream(), {
-        httpMetadata: { contentType: "image/webp" },
+      const thumbBuffer = await thumbnail.arrayBuffer();
+      await env.BUCKET.put(thumbKey, thumbBuffer, {
+        httpMetadata: { contentType: thumbnail.type || "image/jpeg" },
         customMetadata: { "original-key": imageKey },
       });
       thumbnailUrl = `${env.PUBLIC_BASE_URL}/${thumbKey}`;
@@ -183,11 +186,22 @@ async function handleListAssets(request, env) {
 
     const publicUrl = `${env.PUBLIC_BASE_URL}/${obj.key}`;
 
-    // 推导缩略图 URL
+    // 推导缩略图 URL（检查 R2 中实际存在哪个格式）
     const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
     const baseName = filename.replace(ext, "");
-    const thumbKey = `thumbnails/${datePath}/${baseName}-thumb.webp`;
-    const thumbnailUrl = `${env.PUBLIC_BASE_URL}/${thumbKey}`;
+    let thumbnailUrl = "";
+    for (const thumbExt of [".webp", ".jpg"]) {
+      const candidateKey = `thumbnails/${datePath}/${baseName}-thumb${thumbExt}`;
+      try {
+        const head = await env.BUCKET.head(candidateKey);
+        if (head) {
+          thumbnailUrl = `${env.PUBLIC_BASE_URL}/${candidateKey}`;
+          break;
+        }
+      } catch (e) {
+        // 继续尝试下一个扩展名
+      }
+    }
 
     const uploadTime = obj.uploaded
       ? obj.uploaded.toISOString()

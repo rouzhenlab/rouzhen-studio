@@ -42,7 +42,7 @@ let allUrls = "";
 let pendingBatchAfterToken = false;
 
 // ------------------------------
-// 缩略图生成（Canvas → WebP）
+// 缩略图生成（Canvas → WebP，失败降级 JPEG）
 // ------------------------------
 async function generateThumbnail(file) {
   const bitmap = await createImageBitmap(file);
@@ -65,8 +65,15 @@ async function generateThumbnail(file) {
   ctx.drawImage(bitmap, 0, 0, tw, th);
   bitmap.close();
 
-  const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
-  return new File([blob], `thumb-${file.name}.webp`, { type: "image/webp" });
+  // 优先 WebP，不支持则降级 JPEG
+  let blob;
+  try {
+    blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+  } catch (e) {
+    blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.8 });
+  }
+  const ext = blob.type === "image/webp" ? ".webp" : ".jpg";
+  return new File([blob], `thumb-${file.name}${ext}`, { type: blob.type });
 }
 
 // ------------------------------
