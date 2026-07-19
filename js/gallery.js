@@ -231,7 +231,7 @@ copySelectedBtn.addEventListener("click", async () => {
 });
 
 // ------------------------------
-// 下载素材库（生成索引 + 打包缩略图）
+// 下载素材库（直接写入本地 asset-library 目录，已存在则跳过）
 // ------------------------------
 downloadLibraryBtn.addEventListener("click", async () => {
   const token = getStoredToken();
@@ -240,11 +240,23 @@ downloadLibraryBtn.addEventListener("click", async () => {
     return;
   }
 
+  // 检查浏览器是否支持 File System Access API
+  if (!window.showDirectoryPicker) {
+    setStatus("当前浏览器不支持直接写入本地目录，请使用 Chrome / Edge");
+    return;
+  }
+
   downloadLibraryBtn.disabled = true;
   downloadLibraryBtn.textContent = "生成索引中…";
 
   try {
-    // 1. 调用后端生成 library.json
+    // 1. 让用户选择 asset-library 目录（可新建或选已有）
+    const dirHandle = await window.showDirectoryPicker({
+      mode: "readwrite",
+      startIn: "desktop",
+    });
+
+    // 2. 调用后端生成 library.json
     const genRes = await fetch("/api/generate-index", {
       method: "POST",
       headers: { "X-Upload-Token": token },
@@ -255,61 +267,81 @@ downloadLibraryBtn.addEventListener("click", async () => {
       openTokenOverlay();
       return;
     }
-
     if (!genRes.ok) throw new Error("generate-index failed");
 
     const genData = await genRes.json();
-    setStatus(`索引已生成，共 ${genData.total} 张素材，正在打包缩略图…`);
+    setStatus(`索引已生成，共 ${genData.total} 张，正在写入本地…`);
 
-    // 2. 下载 library.json
+    // 3. 获取最新 library.json
     const libRes = await fetch("/library.json");
     if (!libRes.ok) throw new Error("fetch library.json failed");
     const library = await libRes.json();
 
-    // 3. 用 JSZip 打包
-    const zip = new JSZip();
-    const assetLibFolder = zip.folder("asset-library");
-    const thumbFolder = assetLibFolder.folder("thumbnails");
+    // 4. 写入 library.json（始终覆盖）
+    const libFileHandle = await dirHandle.getFileHandle("library.json", { create: true });
+    const libWritable = await libFileHandle.createWritable();
+    await libWritable.write(JSON.stringify(library, null, 2));
+    await libWritable.close();
 
-    // 写入 library.json
-    assetLibFolder.file("library.json", JSON.stringify(library, null, 2));
+    // 5. 创建/获取 thumbnails 子目录
+    const thumbDirHandle = await dirHandle.getDirectoryHandle("thumbnails", { create: true });
 
-    // 4. 下载所有缩略图
-    const assetsWithThumbs = library.assets.filter((a) => a.thumbnail_url);
+    // 6. 逐个下载缩略图（已存在则跳过）
+    const assetsWithThumbs = library.assets.filter((a) => a.thumbnail_url && a.thumbnail_key);
     const total = assetsWithThumbs.length;
-    let downloaded = 0;
+    let written = 0;
+    let skipped = 0;
 
     for (const asset of assetsWithThumbs) {
       try {
-        downloadLibraryBtn.textContent = `下载缩略图 ${downloaded + 1}/${total}`;
+        downloadLibraryBtn.textContent = `处理 ${written + skipped + 1}/${total}`;
+
+        // 解析本地路径: thumbnails/YYYY/MM/DD/filename-thumb.webp
+        const relativePath = asset.thumbnail_key.replace("thumbnails/", "");
+        // relativePath: YYYY/MM/DD/filename-thumb.webp
+        const pathParts = relativePath.split("/");
+        // pathParts: [YYYY, MM, DD, filename]
+
+        // 逐级创建日期目录
+        let currentDir = thumbDirHandle;
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          currentDir = await currentDir.getDirectoryHandle(pathParts[i], { create: true });
+        }
+
+        const fileName = pathParts[pathParts.length - 1];
+
+        // 检查文件是否已存在
+        try {
+          await currentDir.getFileHandle(fileName); // 不传 create:false，存在则成功
+          skipped++;
+          continue; // 已存在，跳过
+        } catch (e) {
+          // 文件不存在，需要下载
+        }
+
+        // 下载缩略图
         const resp = await fetch(asset.thumbnail_url);
         if (!resp.ok) continue;
         const blob = await resp.blob();
 
-        // 保持日期目录结构: thumbnails/YYYY/MM/DD/filename-thumb.webp
-        const thumbPath = asset.thumbnail_key.replace("thumbnails/", "");
-        thumbFolder.file(thumbPath, blob);
-        downloaded++;
+        // 写入本地
+        const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        written++;
       } catch (e) {
         // 单张失败不影响整体
       }
     }
 
-    // 5. 生成 zip 并触发下载
-    downloadLibraryBtn.textContent = "生成 ZIP 文件…";
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(zipBlob);
-    a.download = `rouzhen-asset-library-${new Date().toISOString().slice(0, 10)}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-
-    setStatus(`下载完成！共 ${downloaded} 张缩略图 + 索引文件`);
+    setStatus(`完成！新增 ${written} 张缩略图，跳过 ${skipped} 张已存在`);
   } catch (err) {
-    setStatus("下载失败：" + err.message);
+    if (err.name === "AbortError") {
+      setStatus("已取消");
+    } else {
+      setStatus("下载失败：" + err.message);
+    }
   } finally {
     downloadLibraryBtn.disabled = false;
     downloadLibraryBtn.textContent = "⬇ 下载素材库";
