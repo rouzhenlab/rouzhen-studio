@@ -37,6 +37,14 @@ export default {
       return handleListAssets(request, env);
     }
 
+    if (url.pathname === "/api/generate-index" && request.method === "POST") {
+      return handleGenerateIndex(request, env);
+    }
+
+    if (url.pathname === "/library.json" && request.method === "GET") {
+      return handleGetLibrary(env);
+    }
+
     // 其他请求交给 Pages 静态资源
     return env.ASSETS.fetch(request);
   },
@@ -227,6 +235,133 @@ async function handleListAssets(request, env) {
     cursor: listed.truncated ? listed.cursor : null,
     truncated: listed.truncated,
   });
+}
+
+// ------------------------------
+// POST /api/generate-index — 生成 library.json 索引到 R2
+// ------------------------------
+async function handleGenerateIndex(request, env) {
+  // 口令校验
+  const token = request.headers.get("X-Upload-Token") || "";
+  if (!env.UPLOAD_TOKEN || token !== env.UPLOAD_TOKEN) {
+    return jsonResponse({ error: "unauthorized" }, 401);
+  }
+
+  // 遍历所有图片，收集完整信息
+  const assets = [];
+  let cursor;
+
+  try {
+    do {
+      const listed = await env.BUCKET.list({
+        prefix: "images/",
+        limit: 1000,
+        cursor,
+      });
+
+      for (const obj of listed.objects) {
+        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
+
+        const parts = obj.key.split("/");
+        if (parts.length < 5) continue;
+
+        const year = parts[1];
+        const month = parts[2];
+        const day = parts[3];
+        const filename = parts.slice(4).join("/");
+        const datePath = `${year}/${month}/${day}`;
+        const ext = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
+        const baseName = filename.replace(ext, "");
+
+        const publicUrl = `${env.PUBLIC_BASE_URL}/${obj.key}`;
+
+        // 查找缩略图
+        let thumbnailUrl = "";
+        let thumbKey = "";
+        for (const thumbExt of [".webp", ".jpg"]) {
+          const candidateKey = `thumbnails/${datePath}/${baseName}-thumb${thumbExt}`;
+          try {
+            const head = await env.BUCKET.head(candidateKey);
+            if (head) {
+              thumbnailUrl = `${env.PUBLIC_BASE_URL}/${candidateKey}`;
+              thumbKey = candidateKey;
+              break;
+            }
+          } catch (e) {}
+        }
+
+        const uploadTime = obj.uploaded
+          ? obj.uploaded.toISOString()
+          : `${year}-${month}-${day}T00:00:00Z`;
+
+        assets.push({
+          filename,
+          key: obj.key,
+          url: publicUrl,
+          thumbnail_url: thumbnailUrl,
+          thumbnail_key: thumbKey,
+          upload_time: uploadTime,
+          date: `${year}-${month}-${day}`,
+          type: "image",
+          markdown: `![${filename}](${publicUrl})`,
+          size: obj.size,
+          tags: [],
+          usage_count: 0,
+        });
+      }
+
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+  } catch (err) {
+    return jsonResponse({ error: "index-generation-failed" }, 500);
+  }
+
+  // 按上传时间倒序
+  assets.sort((a, b) => new Date(b.upload_time) - new Date(a.upload_time));
+
+  // 构建 library.json
+  const library = {
+    version: "0.2",
+    generated_at: new Date().toISOString(),
+    total: assets.length,
+    assets,
+  };
+
+  // 写入 R2 根目录
+  try {
+    await env.BUCKET.put("library.json", JSON.stringify(library, null, 2), {
+      httpMetadata: { contentType: "application/json" },
+    });
+  } catch (err) {
+    return jsonResponse({ error: "index-save-failed" }, 500);
+  }
+
+  return jsonResponse({
+    success: true,
+    total: assets.length,
+    generated_at: library.generated_at,
+  });
+}
+
+// ------------------------------
+// GET /library.json — 读取索引
+// ------------------------------
+async function handleGetLibrary(env) {
+  try {
+    const obj = await env.BUCKET.get("library.json");
+    if (!obj) {
+      return jsonResponse({ error: "no-index", message: "请先生成索引" }, 404);
+    }
+    const text = await obj.text();
+    return new Response(text, {
+      headers: {
+        "Content-Type": "application/json",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    return jsonResponse({ error: "fetch-index-failed" }, 500);
+  }
 }
 
 // ------------------------------

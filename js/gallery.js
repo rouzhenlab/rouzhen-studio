@@ -19,6 +19,7 @@ const loadMoreBtn = document.getElementById("loadMoreBtn");
 const galleryStatus = document.getElementById("galleryStatus");
 const selectAllBtn = document.getElementById("selectAllBtn");
 const copySelectedBtn = document.getElementById("copySelectedBtn");
+const downloadLibraryBtn = document.getElementById("downloadLibraryBtn");
 
 const tokenOverlay = document.getElementById("tokenOverlay");
 const tokenInput = document.getElementById("tokenInput");
@@ -226,6 +227,92 @@ copySelectedBtn.addEventListener("click", async () => {
     setStatus(`已复制 ${selected.length} 张图片的 Markdown`);
   } catch (err) {
     setStatus("复制失败，请手动复制");
+  }
+});
+
+// ------------------------------
+// 下载素材库（生成索引 + 打包缩略图）
+// ------------------------------
+downloadLibraryBtn.addEventListener("click", async () => {
+  const token = getStoredToken();
+  if (!token) {
+    openTokenOverlay();
+    return;
+  }
+
+  downloadLibraryBtn.disabled = true;
+  downloadLibraryBtn.textContent = "生成索引中…";
+
+  try {
+    // 1. 调用后端生成 library.json
+    const genRes = await fetch("/api/generate-index", {
+      method: "POST",
+      headers: { "X-Upload-Token": token },
+    });
+
+    if (genRes.status === 401) {
+      clearStoredToken();
+      openTokenOverlay();
+      return;
+    }
+
+    if (!genRes.ok) throw new Error("generate-index failed");
+
+    const genData = await genRes.json();
+    setStatus(`索引已生成，共 ${genData.total} 张素材，正在打包缩略图…`);
+
+    // 2. 下载 library.json
+    const libRes = await fetch("/library.json");
+    if (!libRes.ok) throw new Error("fetch library.json failed");
+    const library = await libRes.json();
+
+    // 3. 用 JSZip 打包
+    const zip = new JSZip();
+    const assetLibFolder = zip.folder("asset-library");
+    const thumbFolder = assetLibFolder.folder("thumbnails");
+
+    // 写入 library.json
+    assetLibFolder.file("library.json", JSON.stringify(library, null, 2));
+
+    // 4. 下载所有缩略图
+    const assetsWithThumbs = library.assets.filter((a) => a.thumbnail_url);
+    const total = assetsWithThumbs.length;
+    let downloaded = 0;
+
+    for (const asset of assetsWithThumbs) {
+      try {
+        downloadLibraryBtn.textContent = `下载缩略图 ${downloaded + 1}/${total}`;
+        const resp = await fetch(asset.thumbnail_url);
+        if (!resp.ok) continue;
+        const blob = await resp.blob();
+
+        // 保持日期目录结构: thumbnails/YYYY/MM/DD/filename-thumb.webp
+        const thumbPath = asset.thumbnail_key.replace("thumbnails/", "");
+        thumbFolder.file(thumbPath, blob);
+        downloaded++;
+      } catch (e) {
+        // 单张失败不影响整体
+      }
+    }
+
+    // 5. 生成 zip 并触发下载
+    downloadLibraryBtn.textContent = "生成 ZIP 文件…";
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = `rouzhen-asset-library-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+
+    setStatus(`下载完成！共 ${downloaded} 张缩略图 + 索引文件`);
+  } catch (err) {
+    setStatus("下载失败：" + err.message);
+  } finally {
+    downloadLibraryBtn.disabled = false;
+    downloadLibraryBtn.textContent = "⬇ 下载素材库";
   }
 });
 

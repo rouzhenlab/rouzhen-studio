@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>素材库 — 本地离线浏览</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f0f0ec; color: #1a1a1a; padding: 20px;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin-bottom: 8px; }
+  .meta { color: #8a8a82; font-size: 0.85rem; margin-bottom: 16px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 0.85rem; }
+  .btn:hover { background: #f5f5f0; }
+  .btn-primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .btn-primary:hover { background: #333; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .date-header { font-size: 0.9rem; color: #8a8a82; margin: 16px 0 8px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { border: 2px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: #fff; transition: box-shadow 0.15s; }
+  .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .card.selected { border-color: #1a1a1a; }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: #f0f0ec; }
+  .card-info { padding: 4px 6px; font-size: 0.7rem; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status { color: #8a8a82; font-size: 0.85rem; margin-top: 12px; }
+  .error { color: #c00; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 0.85rem; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📁 本地素材库</h1>
+  <p class="meta" id="metaInfo">加载中…</p>
+
+  <div class="toolbar">
+    <button class="btn" id="selectAllBtn">全选</button>
+    <button class="btn btn-primary" id="copyBtn" disabled>复制选中 Markdown</button>
+    <button class="btn" id="copyUrlsBtn" disabled>复制选中 URL</button>
+  </div>
+
+  <div id="gallery"></div>
+  <p class="status" id="status"></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const gallery = document.getElementById("gallery");
+const statusEl = document.getElementById("status");
+const metaInfo = document.getElementById("metaInfo");
+const selectAllBtn = document.getElementById("selectAllBtn");
+const copyBtn = document.getElementById("copyBtn");
+const copyUrlsBtn = document.getElementById("copyUrlsBtn");
+const toastEl = document.getElementById("toast");
+
+let library = null;
+let selectedKeys = new Set();
+
+async function loadLibrary() {
+  try {
+    const resp = await fetch("./library.json");
+    if (!resp.ok) throw new Error("无法读取 library.json");
+    library = await resp.json();
+    metaInfo.textContent = `共 ${library.total} 张素材 · 索引生成于 ${new Date(library.generated_at).toLocaleString("zh-CN")}`;
+    render();
+  } catch (err) {
+    metaInfo.innerHTML = '<span class="error">加载失败：' + err.message + '</span><br>请确保 viewer.html 和 library.json 在同一目录。';
+  }
+}
+
+function render() {
+  const groups = {};
+  for (const asset of library.assets) {
+    const date = asset.date || asset.upload_time.slice(0, 10);
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(asset);
+  }
+
+  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+  gallery.innerHTML = "";
+
+  for (const date of sortedDates) {
+    const header = document.createElement("div");
+    header.className = "date-header";
+    header.textContent = formatDate(date);
+    gallery.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+
+    for (const asset of groups[date]) {
+      const card = document.createElement("div");
+      card.className = "card" + (selectedKeys.has(asset.key) ? " selected" : "");
+      card.dataset.key = asset.key;
+
+      // 本地缩略图路径（相对路径）
+      const thumbLocal = asset.thumbnail_key
+        ? "./thumbnails/" + asset.thumbnail_key.replace("thumbnails/", "")
+        : "";
+
+      card.innerHTML = `
+        <img src="${thumbLocal}" alt="${asset.filename}"
+             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>'">
+        <div class="card-info" title="${asset.filename}">${asset.filename}</div>
+      `;
+
+      card.addEventListener("click", () => toggleSelect(asset.key));
+      grid.appendChild(card);
+    }
+
+    gallery.appendChild(grid);
+  }
+}
+
+function toggleSelect(key) {
+  if (selectedKeys.has(key)) selectedKeys.delete(key);
+  else selectedKeys.add(key);
+  updateUI();
+}
+
+function updateUI() {
+  document.querySelectorAll(".card").forEach(card => {
+    card.classList.toggle("selected", selectedKeys.has(card.dataset.key));
+  });
+  copyBtn.disabled = selectedKeys.size === 0;
+  copyUrlsBtn.disabled = selectedKeys.size === 0;
+  selectAllBtn.textContent = selectedKeys.size === library.assets.length ? "取消全选" : "全选";
+}
+
+selectAllBtn.addEventListener("click", () => {
+  if (selectedKeys.size === library.assets.length) selectedKeys.clear();
+  else library.assets.forEach(a => selectedKeys.add(a.key));
+  updateUI();
+});
+
+copyBtn.addEventListener("click", async () => {
+  const selected = library.assets.filter(a => selectedKeys.has(a.key));
+  const text = selected.map(a => a.markdown || `![${a.filename}](${a.url})`).join("\n\n");
+  await navigator.clipboard.writeText(text);
+  showToast(`已复制 ${selected.length} 张图片的 Markdown`);
+});
+
+copyUrlsBtn.addEventListener("click", async () => {
+  const selected = library.assets.filter(a => selectedKeys.has(a.key));
+  const text = selected.map(a => a.url).join("\n");
+  await navigator.clipboard.writeText(text);
+  showToast(`已复制 ${selected.length} 个 URL`);
+});
+
+function formatDate(dateKey) {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (dateKey === today) return "今天";
+  if (dateKey === yesterday) return "昨天";
+  return dateKey;
+}
+
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  setTimeout(() => toastEl.classList.remove("show"), 2000);
+}
+
+loadLibrary();
+</script>
+</body>
+</html>
