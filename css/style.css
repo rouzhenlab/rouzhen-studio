@@ -49,6 +49,25 @@ body {
   color: var(--color-text);
 }
 
+/* 导航 */
+
+.nav {
+  margin-top: 12px;
+}
+
+.nav-link {
+  font-size: 13px;
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 2px;
+  transition: color 0.15s ease;
+}
+
+.nav-link:hover {
+  color: var(--color-text);
+}
+
 /* 上传区 */
 
 .upload-area {
@@ -67,28 +86,98 @@ body {
   color: var(--color-muted);
 }
 
-.preview-wrap {
+/* 上传队列 */
+
+.queue-area {
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 8px;
-  margin-top: 8px;
-}
-
-.preview-img {
-  width: 100%;
   max-height: 320px;
-  object-fit: contain;
-  border-radius: var(--radius);
-  background: #f0f0ec;
+  overflow-y: auto;
 }
 
-.file-name {
-  margin: 0;
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: #f5f5f1;
+}
+
+.queue-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #eaeae5;
+}
+
+.queue-name {
+  flex: 1;
   font-size: 12px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.queue-status {
+  font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.queue-status--waiting {
   color: var(--color-muted);
-  word-break: break-all;
+}
+
+.queue-status--generating,
+.queue-status--uploading {
+  color: var(--color-text);
+}
+
+.queue-status--done {
+  color: #5a8a5a;
+}
+
+.queue-status--error {
+  color: #a85a5a;
+}
+
+/* 结果列表 */
+
+.result-list {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.result-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.result-item-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.result-item-name {
+  font-size: 10px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
   text-align: center;
 }
 
@@ -134,29 +223,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-}
-
-.result-img-wrap {
-  width: 100%;
-}
-
-.result-img {
-  width: 100%;
-  border-radius: var(--radius);
-  display: block;
-}
-
-.url-input {
-  width: 100%;
-  max-width: 320px;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  border: 1px solid var(--color-line);
-  background: #fff;
-  color: var(--color-muted);
-  font-size: 12px;
-  text-align: center;
+  gap: 16px;
 }
 
 /* 状态提示 */

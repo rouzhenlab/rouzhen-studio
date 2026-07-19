@@ -1,13 +1,14 @@
 // ROUZHEN Studio — app.js
-// 前端交互逻辑：选图预览 / 口令浮层 / 调用 Worker 上传 / 展示结果 / 复制
+// v0.2：多图上传 / 缩略图生成 / 上传队列 / 口令保护 / 复制结果
 
 // ------------------------------
 // 集中配置
 // ------------------------------
 const CONFIG = {
-  WORKER_URL: "/upload", // 同域 Pages Functions，不再走 workers.dev
+  WORKER_URL: "/upload",
   TOKEN_STORAGE_KEY: "rz_upload_token",
-  SIZE_WARN_BYTES: 10 * 1024 * 1024, // 10MB，仅提示，不阻止
+  SIZE_WARN_BYTES: 10 * 1024 * 1024, // 10MB，仅提示
+  THUMB_MAX_DIM: 300,
 };
 
 // ------------------------------
@@ -15,15 +16,12 @@ const CONFIG = {
 // ------------------------------
 const fileInput = document.getElementById("fileInput");
 const selectBtn = document.getElementById("selectBtn");
-const previewWrap = document.getElementById("previewWrap");
-const previewImg = document.getElementById("previewImg");
-const fileNameEl = document.getElementById("fileName");
+const queueArea = document.getElementById("queueArea");
 const uploadBtn = document.getElementById("uploadBtn");
 
 const resultArea = document.getElementById("resultArea");
-const resultImg = document.getElementById("resultImg");
-const urlInput = document.getElementById("urlInput");
-const copyBtn = document.getElementById("copyBtn");
+const resultList = document.getElementById("resultList");
+const copyUrlBtn = document.getElementById("copyUrlBtn");
 const copyMdBtn = document.getElementById("copyMdBtn");
 
 const statusMsg = document.getElementById("statusMsg");
@@ -36,12 +34,43 @@ const tokenConfirmBtn = document.getElementById("tokenConfirmBtn");
 // ------------------------------
 // 状态
 // ------------------------------
-let selectedFile = null;
-let markdownResult = "";
-let pendingUploadAfterToken = false;
+let uploadQueue = [];   // { id, file, previewUrl, thumbnail, status, result }
+let isUploading = false;
+let nextQueueId = 0;
+let allMarkdown = "";
+let allUrls = "";
+let pendingBatchAfterToken = false;
 
 // ------------------------------
-// 选图 & 本地预览
+// 缩略图生成（Canvas → WebP）
+// ------------------------------
+async function generateThumbnail(file) {
+  const bitmap = await createImageBitmap(file);
+  const { width, height } = bitmap;
+  const maxDim = CONFIG.THUMB_MAX_DIM;
+
+  let tw, th;
+  if (width >= height) {
+    tw = maxDim;
+    th = Math.round((height / width) * maxDim);
+  } else {
+    th = maxDim;
+    tw = Math.round((width / height) * maxDim);
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = tw;
+  canvas.height = th;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, tw, th);
+  bitmap.close();
+
+  const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
+  return new File([blob], `thumb-${file.name}.webp`, { type: "image/webp" });
+}
+
+// ------------------------------
+// 选图（支持 multiple）
 // ------------------------------
 selectBtn.addEventListener("click", () => {
   fileInput.value = "";
@@ -49,42 +78,211 @@ selectBtn.addEventListener("click", () => {
 });
 
 fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  if (!file) return;
+  const files = Array.from(fileInput.files);
+  if (files.length === 0) return;
 
-  selectedFile = file;
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) continue;
 
-  const objectUrl = URL.createObjectURL(file);
-  previewImg.src = objectUrl;
-  previewWrap.hidden = false;
-
-  const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-  let nameLine = `${file.name}（${sizeMB} MB）`;
-  if (file.size > CONFIG.SIZE_WARN_BYTES) {
-    nameLine += " · 文件较大，上传可能较慢";
+    const previewUrl = URL.createObjectURL(file);
+    uploadQueue.push({
+      id: nextQueueId++,
+      file,
+      previewUrl,
+      thumbnail: null,
+      status: "waiting",
+      result: null,
+    });
   }
-  fileNameEl.textContent = nameLine;
 
-  uploadBtn.disabled = false;
+  renderQueue();
+  uploadBtn.disabled = uploadQueue.length === 0;
   resultArea.hidden = true;
   setStatus("");
 });
 
 // ------------------------------
+// 渲染上传队列
+// ------------------------------
+function renderQueue() {
+  queueArea.innerHTML = "";
+
+  for (const item of uploadQueue) {
+    const div = document.createElement("div");
+    div.className = "queue-item";
+    div.dataset.id = item.id;
+
+    const thumbSrc = item.previewUrl;
+    const statusText = {
+      waiting: "等待上传",
+      generating: "生成缩略图…",
+      uploading: "上传中…",
+      done: "✓ 完成",
+      error: "✗ 失败",
+    }[item.status];
+
+    const statusClass = `queue-status queue-status--${item.status}`;
+
+    div.innerHTML = `
+      <img class="queue-thumb" src="${thumbSrc}" alt="">
+      <span class="queue-name">${item.file.name}</span>
+      <span class="${statusClass}">${statusText}</span>
+    `;
+
+    queueArea.appendChild(div);
+  }
+
+  queueArea.hidden = false;
+}
+
+function updateQueueItemStatus(id) {
+  const el = queueArea.querySelector(`[data-id="${id}"]`);
+  if (!el) return;
+
+  const item = findQueueItem(id);
+  if (!item) return;
+
+  const statusText = {
+    waiting: "等待上传",
+    generating: "生成缩略图…",
+    uploading: "上传中…",
+    done: "✓ 完成",
+    error: "✗ 失败",
+  }[item.status];
+
+  const statusEl = el.querySelector(".queue-status");
+  if (statusEl) {
+    statusEl.textContent = statusText;
+    statusEl.className = `queue-status queue-status--${item.status}`;
+  }
+}
+
+// ------------------------------
 // 上传按钮
 // ------------------------------
 uploadBtn.addEventListener("click", () => {
-  if (!selectedFile) return;
+  if (isUploading || uploadQueue.length === 0) return;
 
   const savedToken = getStoredToken();
   if (!savedToken) {
-    pendingUploadAfterToken = true;
+    pendingBatchAfterToken = true;
     openTokenOverlay();
     return;
   }
 
-  startUpload(savedToken);
+  startBatchUpload(savedToken);
 });
+
+// ------------------------------
+// 批量上传（逐个处理）
+// ------------------------------
+async function startBatchUpload(token) {
+  isUploading = true;
+  uploadBtn.disabled = true;
+
+  const batchId = generateBatchId();
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const item of uploadQueue) {
+    if (item.status === "done") continue;
+
+    // 生成缩略图
+    item.status = "generating";
+    updateQueueItemStatus(item.id);
+
+    try {
+      item.thumbnail = await generateThumbnail(item.file);
+    } catch (err) {
+      // HEIC 等格式可能失败，缩略图为 null 也继续上传
+      item.thumbnail = null;
+    }
+
+    // 上传
+    item.status = "uploading";
+    updateQueueItemStatus(item.id);
+    setStatus(`上传中 ${successCount + failCount + 1}/${uploadQueue.length}…`);
+
+    try {
+      const result = await uploadSingleFile(item.file, item.thumbnail, token, batchId);
+      item.status = "done";
+      item.result = result;
+      successCount++;
+    } catch (err) {
+      item.status = "error";
+      failCount++;
+
+      // 口令错误：停止后续上传，弹出重新输入
+      if (err.message === "unauthorized") {
+        clearStoredToken();
+        updateQueueItemStatus(item.id);
+        setStatus("口令错误，请重新输入");
+        pendingBatchAfterToken = true;
+        openTokenOverlay();
+        isUploading = false;
+        uploadBtn.disabled = false;
+        return;
+      }
+    }
+
+    updateQueueItemStatus(item.id);
+  }
+
+  isUploading = false;
+  uploadBtn.disabled = false;
+
+  if (failCount === 0) {
+    setStatus(`全部上传成功（${successCount} 张）`);
+  } else {
+    setStatus(`上传完成：${successCount} 成功，${failCount} 失败`);
+  }
+
+  showResults();
+}
+
+// ------------------------------
+// 单文件上传
+// ------------------------------
+async function uploadSingleFile(file, thumbnail, token, batchId) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (thumbnail) {
+    formData.append("thumbnail", thumbnail);
+  }
+
+  const response = await fetch(CONFIG.WORKER_URL, {
+    method: "POST",
+    headers: {
+      "X-Upload-Token": token,
+      "X-Batch-Id": batchId,
+    },
+    body: formData,
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("unauthorized");
+  }
+
+  if (!response.ok) {
+    throw new Error("upload-failed");
+  }
+
+  return response.json();
+}
+
+// ------------------------------
+// 批次 ID 生成
+// ------------------------------
+function generateBatchId() {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  const h = String(now.getUTCHours()).padStart(2, "0");
+  const min = String(now.getUTCMinutes()).padStart(2, "0");
+  const s = String(now.getUTCSeconds()).padStart(2, "0");
+  return `${y}${m}${d}-${h}${min}${s}`;
+}
 
 // ------------------------------
 // 口令浮层
@@ -95,6 +293,10 @@ function openTokenOverlay() {
   tokenInput.focus();
 }
 
+function closeTokenOverlay() {
+  tokenOverlay.hidden = true;
+}
+
 tokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
@@ -102,13 +304,9 @@ tokenInput.addEventListener("keydown", (event) => {
   }
 });
 
-function closeTokenOverlay() {
-  tokenOverlay.hidden = true;
-}
-
 tokenCancelBtn.addEventListener("click", (event) => {
   event.preventDefault();
-  pendingUploadAfterToken = false;
+  pendingBatchAfterToken = false;
   closeTokenOverlay();
 });
 
@@ -124,9 +322,9 @@ tokenConfirmBtn.addEventListener("click", (event) => {
   saveStoredToken(token);
   closeTokenOverlay();
 
-  if (pendingUploadAfterToken) {
-    pendingUploadAfterToken = false;
-    startUpload(token);
+  if (pendingBatchAfterToken) {
+    pendingBatchAfterToken = false;
+    startBatchUpload(token);
   }
 });
 
@@ -158,55 +356,34 @@ function clearStoredToken() {
 }
 
 // ------------------------------
-// 上传逻辑
-// ------------------------------
-async function startUpload(token) {
-  uploadBtn.disabled = true;
-  setStatus("上传中…");
-
-  try {
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    const response = await fetch(CONFIG.WORKER_URL, {
-      method: "POST",
-      headers: {
-        "X-Upload-Token": token,
-      },
-      body: formData,
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      // 口令错误：清除本地口令，重新弹出输入
-      clearStoredToken();
-      setStatus("口令错误，请重新输入");
-      uploadBtn.disabled = false;
-      pendingUploadAfterToken = true;
-      openTokenOverlay();
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error("upload-failed");
-    }
-
-    const data = await response.json();
-    showResult(data);
-    setStatus("上传成功");
-  } catch (err) {
-    setStatus("上传失败，请检查网络后重试");
-  } finally {
-    uploadBtn.disabled = false;
-  }
-}
-
-// ------------------------------
 // 展示结果
 // ------------------------------
-function showResult(data) {
-  resultImg.src = data.url;
-  urlInput.value = data.url;
-  markdownResult = data.markdown || `![image](${data.url})`;
+function showResults() {
+  const items = uploadQueue.filter((i) => i.status === "done" && i.result);
+  if (items.length === 0) return;
+
+  resultList.innerHTML = "";
+
+  const urls = [];
+  const mds = [];
+
+  for (const item of items) {
+    const url = item.result.url;
+    const md = item.result.markdown || `![image](${url})`;
+    urls.push(url);
+    mds.push(md);
+
+    const card = document.createElement("div");
+    card.className = "result-item";
+    card.innerHTML = `
+      <img class="result-item-img" src="${url}" alt="">
+      <span class="result-item-name">${item.file.name}</span>
+    `;
+    resultList.appendChild(card);
+  }
+
+  allUrls = urls.join("\n");
+  allMarkdown = mds.join("\n\n");
 
   resultArea.hidden = false;
 }
@@ -214,12 +391,12 @@ function showResult(data) {
 // ------------------------------
 // 复制功能
 // ------------------------------
-copyBtn.addEventListener("click", () => {
-  copyText(urlInput.value, "链接已复制");
+copyUrlBtn.addEventListener("click", () => {
+  copyText(allUrls, "链接已复制");
 });
 
 copyMdBtn.addEventListener("click", () => {
-  copyText(markdownResult, "Markdown 已复制");
+  copyText(allMarkdown, "Markdown 已复制");
 });
 
 async function copyText(text, successMsg) {
@@ -233,8 +410,12 @@ async function copyText(text, successMsg) {
 }
 
 // ------------------------------
-// 状态提示
+// 工具
 // ------------------------------
+function findQueueItem(id) {
+  return uploadQueue.find((i) => i.id === id);
+}
+
 function setStatus(msg) {
   statusMsg.textContent = msg;
 }
