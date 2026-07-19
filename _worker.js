@@ -45,6 +45,11 @@ export default {
       return handleGetLibrary(env);
     }
 
+    // 缩略图代理（绕过 R2 公开 URL 的 CORS 限制）
+    if (url.pathname.startsWith("/api/thumb/") && request.method === "GET") {
+      return handleThumbProxy(url, env);
+    }
+
     // 其他请求交给 Pages 静态资源
     return env.ASSETS.fetch(request);
   },
@@ -361,6 +366,35 @@ async function handleGetLibrary(env) {
     });
   } catch (err) {
     return jsonResponse({ error: "fetch-index-failed" }, 500);
+  }
+}
+
+// ------------------------------
+// GET /api/thumb/{key} — 缩略图代理（解决 R2 CORS 问题）
+// ------------------------------
+async function handleThumbProxy(url, env) {
+  // 提取 R2 key: /api/thumb/thumbnails/2026/07/19/xxx-thumb.webp → thumbnails/2026/07/19/xxx-thumb.webp
+  const key = url.pathname.replace("/api/thumb/", "");
+  if (!key) {
+    return jsonResponse({ error: "no-key" }, 400);
+  }
+
+  try {
+    const obj = await env.BUCKET.get(key);
+    if (!obj) {
+      return jsonResponse({ error: "not-found" }, 404);
+    }
+
+    const contentType = obj.httpMetadata?.contentType || "image/webp";
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=31536000",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    return jsonResponse({ error: "thumb-fetch-failed" }, 500);
   }
 }
 

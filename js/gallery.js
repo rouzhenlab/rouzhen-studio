@@ -316,8 +316,9 @@ downloadLibraryBtn.addEventListener("click", async () => {
           // 文件不存在，需要下载
         }
 
-        // 下载缩略图
-        const resp = await fetch(asset.thumbnail_url);
+        // 下载缩略图（通过 Worker 代理绕过 R2 CORS）
+        const proxyUrl = `/api/thumb/${asset.thumbnail_key}`;
+        const resp = await fetch(proxyUrl);
         if (!resp.ok) continue;
         const blob = await resp.blob();
 
