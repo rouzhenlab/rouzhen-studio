@@ -94,6 +94,13 @@ function openTokenOverlay() {
   tokenInput.focus();
 }
 
+tokenInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    tokenConfirmBtn.click();
+  }
+});
+
 function closeTokenOverlay() {
   tokenOverlay.hidden = true;
 }
