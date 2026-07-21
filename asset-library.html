@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asset Library — ROUZHEN Studio v0.3.1</title>
+<link rel="stylesheet" href="css/gallery.css">
+<style>
+.asset-card {
+  position: relative;
+  cursor: pointer;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+.asset-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.asset-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  background: #f0f0ec;
+}
+.asset-info {
+  padding: 8px;
+  font-size: 0.7rem;
+}
+.asset-id {
+  font-family: monospace;
+  color: #666;
+  font-size: 0.65rem;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asset-name {
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asset-date {
+  font-size: 0.55rem;
+  color: #999;
+  margin-top: 2px;
+}
+.status-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.status-generated { background: #e8f5e9; color: #2a6; }
+.status-missing { background: #fff3e0; color: #e65100; }
+.status-pending { background: #e3f2fd; color: #1565c0; }
+
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #ddd;
+}
+.tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+}
+.tab.active {
+  border-bottom-color: #1a1a1a;
+  font-weight: bold;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #888;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.metadata-panel {
+  background: #f8f8f5;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 0.8rem;
+  margin-top: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.metadata-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+</style>
+</head>
+<body>
+
+<main class="gallery-container">
+
+  <header class="gallery-header">
+    <a href="/" class="gallery-back">← 上传</a>
+    <h1>Asset Library</h1>
+    <div class="gallery-actions">
+      <a href="gallery.html" class="btn btn-sm btn-outline">v0.3 Gallery</a>
+      <a href="maintenance.html" class="btn btn-sm btn-outline">Maintenance</a>
+    </div>
+  </header>
+
+  <div class="action-buttons">
+    <button id="buildIndexBtn" class="btn btn-sm btn-primary">构建索引</button>
+    <button id="refreshBtn" class="btn btn-sm btn-outline">刷新</button>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab active" data-tab="all">全部</button>
+    <button class="tab" data-tab="missing">缺失缩略图</button>
+    <button class="tab" data-tab="metadata">Metadata 查看</button>
+  </div>
+
+  <div id="statusEl" class="gallery-status"></div>
+
+  <!-- Tab 1: 全部 + 缺失缩略图 -->
+  <div id="gridContainer">
+    <div id="assetGrid" class="gallery-grid"></div>
+  </div>
+
+  <!-- Tab 2: Metadata 查看 -->
+  <div id="metadataContainer" hidden>
+    <p style="color:#666;font-size:0.85rem;">从列表中点击任意资产卡片，可在此查看完整 metadata。</p>
+    <div id="metadataPanel" class="metadata-panel" hidden>
+      <pre id="metadataContent"></pre>
+    </div>
+  </div>
+
+</main>
+
+<!-- Markdown 复制 Toast -->
+<div id="toast" class="toast" hidden></div>
+
+<!-- 口令浮层 -->
+<div id="tokenOverlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <p class="overlay-text">请输入口令访问 Asset Library</p>
+    <input id="tokenInput" class="token-input" type="password">
+    <div class="overlay-actions">
+      <button id="tokenCancelBtn" class="btn btn-sm btn-outline" type="button">取消</button>
+      <button id="tokenConfirmBtn" class="btn btn-sm btn-primary" type="button">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/asset-library.js"></script>
+</body>
+</html>
