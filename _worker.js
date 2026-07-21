@@ -1,5 +1,5 @@
 // ROUZHEN Studio — Pages Functions (_worker.js)
-// v0.3.1：Asset Index Layer
+// v0.3.12：Asset Index Layer
 // - v0.3 基础架构保留（R2 唯一数据源 + 镜像缩略图）
 // - 新增 Asset Index Layer：管理 asset_id + metadata + 缩略图状态
 // - 旧图片保持原路径，新上传使用 Asset ID 命名
@@ -82,7 +82,7 @@ export default {
       return handleFileProxy(url, env);
     }
 
-    // Asset Index API (v0.3.1)
+    // Asset Index API (v0.3.12)
     if (url.pathname === "/api/asset-index/build" && request.method === "POST") {
       return handleBuildAssetIndex(request, env);
     }
@@ -110,7 +110,7 @@ export default {
 
 // ------------------------------
 // POST /upload — 上传原图 + 缩略图
-// v0.3.1: 新上传使用 Asset ID 命名
+// v0.3.12: 新上传使用 Asset ID 命名
 // ------------------------------
 async function handleUpload(request, env) {
   // 口令校验
@@ -145,7 +145,7 @@ async function handleUpload(request, env) {
     return jsonResponse({ error: "file-too-large" }, 400);
   }
 
-  // v0.3.1: 生成 Asset ID
+  // v0.3.12: 生成 Asset ID
   const now = new Date();
   const assetId = generateAssetId(now);
   const ext = extractExtension(file.name, file.type);
@@ -180,7 +180,7 @@ async function handleUpload(request, env) {
   let thumbnailKey = "";
 
   if (thumbnail && typeof thumbnail !== "string" && thumbnail.size > 0) {
-    // v0.3.1: 统一缩略图路径 assets/thumbnails/{asset_id}.webp
+    // v0.3.12: 统一缩略图路径 assets/thumbnails/{asset_id}.webp
     const thumbExt = ".webp"; // 统一使用 webp
     thumbnailKey = `assets/thumbnails/${assetId}${thumbExt}`;
 
@@ -196,7 +196,7 @@ async function handleUpload(request, env) {
     }
   }
 
-  // v0.3.1: 创建 metadata 文件
+  // v0.3.12: 创建 metadata 文件
   const metadata = {
     asset_id: assetId,
     source: "upload",
@@ -246,7 +246,7 @@ async function handleUpload(request, env) {
 
 // ------------------------------
 // GET /api/assets — 素材列表（分页）
-// v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+// v0.3.12: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleListAssets(request, env) {
   // 口令校验（gallery 也受 Token 保护）
@@ -310,8 +310,8 @@ async function handleListAssets(request, env) {
     }
     
     if (!thumbnailUrl) {
-      const { url: oldThumbUrl } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
-      thumbnailUrl = oldThumbUrl ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbUrl}` : "";
+      const { key: oldThumbKey } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
+      thumbnailUrl = oldThumbKey ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbKey}` : "";
     }
 
     const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
@@ -339,7 +339,7 @@ async function handleListAssets(request, env) {
 
 // ------------------------------
 // POST /api/generate-index — 生成 library.json 索引到 R2
-// v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+// v0.3.12: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleGenerateIndex(request, env) {
   // 口令校验
@@ -391,8 +391,8 @@ async function handleGenerateIndex(request, env) {
     }
     
     if (!thumbnailUrl) {
-      const { url: oldThumbUrl, key: oldThumbKey } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
-      thumbnailUrl = oldThumbUrl ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbUrl}` : "";
+      const { key: oldThumbKey } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
+      thumbnailUrl = oldThumbKey ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbKey}` : "";
       thumbnailKey = oldThumbKey;
     }
 
@@ -426,7 +426,7 @@ async function handleGenerateIndex(request, env) {
 
   // 构建 library.json
   const library = {
-    version: "0.3.1",
+    version: "0.3.12",
     generated_at: new Date().toISOString(),
     total: assets.length,
     assets,
@@ -668,7 +668,7 @@ function randomString(length) {
 
 /**
  * POST /api/maintenance/scan — 扫描图片并统计
- * v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+ * v0.3.12: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
  */
 async function handleMaintenanceScan(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -731,7 +731,7 @@ async function handleMaintenanceScan(request, env) {
 
 /**
  * POST /api/maintenance/scan-missing-thumbnails — 扫描缺失缩略图（不实际生成）
- * v0.3.1: 全量扫描 Bucket，返回 asset_id 用于前端生成缩略图
+ * v0.3.12: 全量扫描 Bucket，返回 asset_id 用于前端生成缩略图
  */
 async function handleScanMissingThumbnails(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -791,7 +791,7 @@ async function handleScanMissingThumbnails(request, env) {
 
 /**
  * POST /api/maintenance/clean-orphans — 清理孤儿缩略图
- * v0.3.1: 全量扫描 Bucket，同时清理 thumbnails/ 和 assets/thumbnails/ 下的孤儿缩略图
+ * v0.3.12: 全量扫描 Bucket，同时清理 thumbnails/ 和 assets/thumbnails/ 下的孤儿缩略图
  */
 async function handleCleanOrphans(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -892,7 +892,7 @@ async function handleCleanOrphans(request, env) {
 
 /**
  * GET /api/maintenance/stats — 统计信息
- * v0.3.1: 全量扫描 Bucket，统计所有图片和两种缩略图
+ * v0.3.12: 全量扫描 Bucket，统计所有图片和两种缩略图
  */
 async function handleMaintenanceStats(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -979,7 +979,7 @@ async function handleMaintenanceStats(request, env) {
 //   2. POST /api/generate-index   建立 library.json 索引
 
 // ------------------------------
-// Asset Index Layer (v0.3.1)
+// Asset Index Layer (v0.3.12)
 // ------------------------------
 
 /**
@@ -1002,7 +1002,7 @@ function generateAssetId(uploadTime = new Date()) {
 
 /**
  * POST /api/asset-index/build — 扫描 R2 构建 Asset Index
- * v0.3.1: 全量扫描 Bucket 所有图片（排除系统目录），统一使用 assets/thumbnails/{asset_id}.webp
+ * v0.3.12: 全量扫描 Bucket 所有图片（排除系统目录），统一使用 assets/thumbnails/{asset_id}.webp
  * Legacy 缩略图迁移：基于 original_path 映射
  */
 async function handleBuildAssetIndex(request, env) {
@@ -1146,7 +1146,7 @@ async function handleBuildAssetIndex(request, env) {
 
   // 写入 metadata 索引
   const metadataIndex = {
-    version: "0.3.1",
+    version: "0.3.12",
     generated_at: now,
     total: assets.length,
     assets: assets.map(a => ({
@@ -1165,7 +1165,7 @@ async function handleBuildAssetIndex(request, env) {
 
   // 写入总索引
   const assetIndex = {
-    version: "0.3.1",
+    version: "0.3.12",
     generated_at: now,
     total: assets.length,
     legacy_assets: assets.filter(a => a.source === "legacy").length,
