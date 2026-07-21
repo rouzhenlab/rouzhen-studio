@@ -1,5 +1,7 @@
 // ROUZHEN Studio — worker.js
-// Cloudflare Worker：接收图片上传，写入 R2（Binding 方式，无需 Access Key）
+// ⚠️ LEGACY: v0.1 遗留的独立 Cloudflare Worker，已被 _worker.js 取代
+// 保留此文件仅为历史参考，不要在新部署中使用
+// 实际线上入口是仓库根目录的 _worker.js（Cloudflare Pages Functions）
 //
 // 需要在 Worker 环境变量 / Bucket 绑定中配置：
 // - UPLOAD_TOKEN     环境变量，上传口令，与前端 X-Upload-Token 比对

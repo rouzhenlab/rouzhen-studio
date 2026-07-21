@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maintenance — ROUZHEN Studio</title>
+<link rel="stylesheet" href="css/gallery.css">
+<style>
+.maintenance-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.maintenance-section h2 {
+  font-size: 1.1rem;
+  margin-bottom: 12px;
+}
+.maintenance-section p {
+  color: #666;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #f5f5f0;
+  border-radius: 6px;
+  padding: 12px;
+}
+.stat-card .stat-label {
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 4px;
+}
+.stat-card .stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.stat-card .stat-sub {
+  font-size: 0.7rem;
+  color: #aaa;
+}
+.action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.log-area {
+  background: #f8f8f5;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 0.8rem;
+  color: #666;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+.log-entry {
+  margin-bottom: 4px;
+}
+.log-entry.success { color: #2a6; }
+.log-entry.error { color: #c00; }
+.log-entry.info { color: #555; }
+</style>
+</head>
+<body>
+
+<main class="gallery-container">
+
+  <header class="gallery-header">
+    <a href="/" class="gallery-back">← 上传</a>
+    <h1>Maintenance</h1>
+    <div class="gallery-actions">
+      <a href="gallery.html" class="btn btn-sm btn-outline">素材库</a>
+    </div>
+  </header>
+
+  <!-- Statistics -->
+  <section class="maintenance-section">
+    <h2>Statistics</h2>
+    <div id="statsGrid" class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Images</div>
+        <div class="stat-value" id="statImages">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Thumbnails</div>
+        <div class="stat-value" id="statThumbnails">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Missing Thumbnails</div>
+        <div class="stat-value" id="statMissing">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Storage</div>
+        <div class="stat-value" id="statStorage">-</div>
+        <div class="stat-sub" id="statStorageBytes"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Latest Upload</div>
+        <div class="stat-value" id="statLatest" style="font-size:0.9rem;">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Oldest Upload</div>
+        <div class="stat-value" id="statOldest" style="font-size:0.9rem;">-</div>
+      </div>
+    </div>
+    <button id="refreshStatsBtn" class="btn btn-sm btn-outline">Refresh</button>
+  </section>
+
+  <!-- Scan R2 -->
+  <section class="maintenance-section">
+    <h2>Scan R2</h2>
+    <p>重新扫描 images/ 目录，发现新增图片并同步素材库。</p>
+    <div class="action-row">
+      <button id="scanBtn" class="btn btn-sm btn-primary">Scan images/</button>
+    </div>
+    <div id="scanLog" class="log-area" hidden></div>
+  </section>
+
+  <!-- Scan Missing Thumbnails -->
+  <section class="maintenance-section">
+    <h2>Scan Missing Thumbnails</h2>
+    <p>扫描缺失缩略图的图片，Worker 不会实际生成，仅返回清单。需使用外部工具生成后上传。</p>
+    <div class="action-row">
+      <button id="scanMissingBtn" class="btn btn-sm btn-primary">Scan Missing</button>
+    </div>
+    <div id="scanMissingLog" class="log-area" hidden></div>
+  </section>
+
+  <!-- Clean Orphan Thumbnails -->
+  <section class="maintenance-section">
+    <h2>Clean Orphan Thumbnails</h2>
+    <p>删除没有对应原图的缩略图。每次最多清理 100 个，可重复执行。</p>
+    <div class="action-row">
+      <button id="cleanOrphansBtn" class="btn btn-sm btn-primary">Clean Orphan Thumbnails</button>
+    </div>
+    <div id="cleanOrphansLog" class="log-area" hidden></div>
+  </section>
+
+  <p id="galleryStatus" class="gallery-status"></p>
+
+</main>
+
+<!-- 口令浮层 -->
+<div id="tokenOverlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <p class="overlay-text">请输入口令访问 Maintenance</p>
+    <input id="tokenInput" class="token-input" type="password">
+    <div class="overlay-actions">
+      <button id="tokenCancelBtn" class="btn btn-sm btn-outline" type="button">取消</button>
+      <button id="tokenConfirmBtn" class="btn btn-sm btn-primary" type="button">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/maintenance.js"></script>
+</body>
+</html>

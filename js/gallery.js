@@ -101,10 +101,10 @@ async function loadAssets(token) {
 // 渲染图库（按日期分组）
 // ------------------------------
 function renderGallery() {
-  // 按日期分组
+  // 按日期分组（使用 uploaded_at）
   const groups = {};
   for (const asset of allAssets) {
-    const dateKey = asset.upload_time.slice(0, 10); // YYYY-MM-DD
+    const dateKey = asset.uploaded_at ? asset.uploaded_at.slice(0, 10) : "unknown";
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(asset);
   }
@@ -134,11 +134,14 @@ function renderGallery() {
         card.classList.add("gallery-card--selected");
       }
 
+      // thumbnail_url 可能为空，使用占位图
+      const thumbSrc = asset.thumbnail_url || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>`;
+
       card.innerHTML = `
         <div class="gallery-card-check">
           <input type="checkbox" ${selectedKeys.has(asset.key) ? "checked" : ""}>
         </div>
-        <img class="gallery-card-thumb" src="${asset.thumbnail_url}" alt="${asset.filename}"
+        <img class="gallery-card-thumb" src="${thumbSrc}" alt="${asset.filename}"
              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>'">
         <div class="gallery-card-info">
           <span class="gallery-card-name" title="${asset.filename}">${asset.filename}</span>
@@ -212,10 +215,14 @@ selectAllBtn.addEventListener("click", () => {
 copySelectedBtn.addEventListener("click", async () => {
   if (selectedKeys.size === 0) return;
 
-  // 按时间顺序排列选中的素材
+  // 按时间顺序排列选中的素材（使用 uploaded_at）
   const selected = allAssets
     .filter((a) => selectedKeys.has(a.key))
-    .sort((a, b) => new Date(b.upload_time) - new Date(a.upload_time));
+    .sort((a, b) => {
+      if (!a.uploaded_at) return 1;
+      if (!b.uploaded_at) return -1;
+      return new Date(b.uploaded_at) - new Date(a.uploaded_at);
+    });
 
   const markdowns = selected.map(
     (a) => a.markdown || `![${a.filename}](${a.url})`
@@ -297,6 +304,7 @@ downloadLibraryBtn.addEventListener("click", async () => {
         downloadLibraryBtn.textContent = `处理 ${written + skipped + 1}/${total}`;
 
         // 本地扁平化: thumbnails/YYYY/filename-thumb.webp（点年份就看全部图）
+        // thumbnail_key 格式: thumbnails/YYYY/MM/DD/filename-thumb.webp
         const relativePath = asset.thumbnail_key.replace("thumbnails/", "");
         // relativePath: YYYY/MM/DD/filename-thumb.webp
         const pathParts = relativePath.split("/");
