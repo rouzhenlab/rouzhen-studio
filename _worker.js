@@ -23,6 +23,12 @@ const CORS_HEADERS = {
 
 const ASSETS_API_LIMIT = 50;
 
+const SYSTEM_PREFIXES = [
+  "thumbnails/",
+  "assets/",
+  "library.json",
+];
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -235,6 +241,7 @@ async function handleUpload(request, env) {
 
 // ------------------------------
 // GET /api/assets — 素材列表（分页）
+// v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleListAssets(request, env) {
   // 口令校验（gallery 也受 Token 保护）
@@ -244,40 +251,63 @@ async function handleListAssets(request, env) {
   }
 
   const url = new URL(request.url);
-  const cursor = url.searchParams.get("cursor") || undefined;
   const limit = parseInt(url.searchParams.get("limit") || String(ASSETS_API_LIMIT), 10);
 
-  let listed;
+  // 加载 Asset Index 获取 original_path -> asset_id 映射
+  const pathToAssetId = new Map();
   try {
-    listed = await env.BUCKET.list({
-      prefix: "images/",
-      limit: Math.min(limit, 1000),
-      cursor,
-    });
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          pathToAssetId.set(asset.original_path, asset.asset_id);
+        }
+      }
+    }
   } catch (err) {
-    return jsonResponse({ error: "list-failed" }, 500);
+    // Asset Index 不存在时返回空映射
   }
 
-  const assets = [];
+  // 扫描所有图片
+  const allImages = await scanAllImages(env);
 
-  // 先一次性获取所有缩略图 key（避免 HEAD 风暴）
+  // 按上传时间倒序
+  allImages.sort((a, b) => {
+    if (!a.uploaded) return 1;
+    if (!b.uploaded) return -1;
+    return new Date(b.uploaded) - new Date(a.uploaded);
+  });
+
+  // 简单分页
+  const pageLimit = Math.min(limit, 1000);
+  const pagedImages = allImages.slice(0, pageLimit);
+  const truncated = allImages.length > pageLimit;
+
+  // 扫描两种缩略图索引
   const thumbnailIndex = await buildThumbnailIndex(env);
+  const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
-  for (const obj of listed.objects) {
-    // 跳过已 soft-delete 的对象
-    if (obj.customMetadata && obj.customMetadata["deleted"] === "true") {
-      continue;
-    }
-
-    // 递归识别 images/ 下所有图片，不依赖目录结构
-    // filename 取 key 的最后一段
+  const assets = [];
+  for (const obj of pagedImages) {
     const filename = obj.key.split("/").pop();
     const publicUrl = `${env.PUBLIC_BASE_URL}/${obj.key}`;
 
-    // 从 image key 派生 thumbnail key（镜像路径）
-    const thumbnailUrl = deriveThumbnailUrl(obj.key, env, thumbnailIndex);
+    // 检查两种缩略图路径：优先新路径 assets/thumbnails/
+    let thumbnailUrl = "";
+    const assetId = pathToAssetId.get(obj.key);
+    
+    if (assetId) {
+      const expectedNewThumbKey = `assets/thumbnails/${assetId}.webp`;
+      if (assetThumbnailIndex.has(expectedNewThumbKey)) {
+        thumbnailUrl = `${env.PUBLIC_BASE_URL}/${expectedNewThumbKey}`;
+      }
+    }
+    
+    if (!thumbnailUrl) {
+      thumbnailUrl = deriveThumbnailUrl(obj.key, env, thumbnailIndex);
+    }
 
-    // 时间来源：R2 uploaded，不用路径解析
     const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
 
     assets.push({
@@ -294,22 +324,16 @@ async function handleListAssets(request, env) {
     });
   }
 
-  // 按上传时间倒序（无时间的排在后面）
-  assets.sort((a, b) => {
-    if (!a.uploaded_at) return 1;
-    if (!b.uploaded_at) return -1;
-    return new Date(b.uploaded_at) - new Date(a.uploaded_at);
-  });
-
   return jsonResponse({
     assets,
-    cursor: listed.truncated ? listed.cursor : null,
-    truncated: listed.truncated,
+    cursor: truncated ? String(pageLimit) : null,
+    truncated,
   });
 }
 
 // ------------------------------
 // POST /api/generate-index — 生成 library.json 索引到 R2
+// v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleGenerateIndex(request, env) {
   // 口令校验
@@ -318,60 +342,73 @@ async function handleGenerateIndex(request, env) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // 先一次性建立缩略图索引（避免 HEAD 风暴）
-  const thumbnailIndex = await buildThumbnailIndex(env);
-
-  // 遍历所有图片，收集完整信息
-  const assets = [];
-  let cursor;
-
+  // 加载 Asset Index 获取 original_path -> asset_id 映射
+  const pathToAssetId = new Map();
   try {
-    do {
-      const listed = await env.BUCKET.list({
-        prefix: "images/",
-        limit: 1000,
-        cursor,
-      });
-
-      for (const obj of listed.objects) {
-        // 跳过已 soft-delete 的对象
-        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
-
-        // 递归识别 images/ 下所有图片，不依赖目录结构
-        const filename = obj.key.split("/").pop();
-        const publicUrl = `${env.PUBLIC_BASE_URL}/${obj.key}`;
-
-        // 从 image key 派生 thumbnail key（镜像路径）
-        const { url: thumbnailUrl, key: thumbnailKey } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
-
-        // 时间来源：R2 uploaded，不用路径解析
-        const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
-
-        // 提取 batch_id（预留）
-        const batchId = obj.customMetadata?.["batch-id"] || null;
-
-        assets.push({
-          id: obj.key,
-          filename,
-          key: obj.key,
-          url: publicUrl,
-          thumbnail_url: thumbnailUrl,
-          thumbnail_key: thumbnailKey,
-          uploaded_at: uploadedAt,
-          size: obj.size,
-          mime: obj.httpMetadata?.contentType || null,
-          type: "image",
-          markdown: `![${filename}](${publicUrl})`,
-          batch_id: batchId,
-          tags: [],
-          usage_count: 0,
-        });
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          pathToAssetId.set(asset.original_path, asset.asset_id);
+        }
       }
-
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
+    }
   } catch (err) {
-    return jsonResponse({ error: "index-generation-failed" }, 500);
+    // Asset Index 不存在时返回空映射
+  }
+
+  // 建立缩略图索引
+  const thumbnailIndex = await buildThumbnailIndex(env);
+  const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
+
+  // 扫描所有图片
+  const allImages = await scanAllImages(env);
+
+  // 生成资产列表
+  const assets = [];
+  for (const obj of allImages) {
+    const filename = obj.key.split("/").pop();
+    const publicUrl = `${env.PUBLIC_BASE_URL}/${obj.key}`;
+
+    // 检查两种缩略图路径：优先新路径
+    let thumbnailUrl = "";
+    let thumbnailKey = "";
+    const assetId = pathToAssetId.get(obj.key);
+    
+    if (assetId) {
+      const expectedNewThumbKey = `assets/thumbnails/${assetId}.webp`;
+      if (assetThumbnailIndex.has(expectedNewThumbKey)) {
+        thumbnailUrl = `${env.PUBLIC_BASE_URL}/${expectedNewThumbKey}`;
+        thumbnailKey = expectedNewThumbKey;
+      }
+    }
+    
+    if (!thumbnailUrl) {
+      const { url, key } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
+      thumbnailUrl = url;
+      thumbnailKey = key;
+    }
+
+    const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
+    const batchId = obj.customMetadata?.["batch-id"] || null;
+
+    assets.push({
+      id: obj.key,
+      filename,
+      key: obj.key,
+      url: publicUrl,
+      thumbnail_url: thumbnailUrl,
+      thumbnail_key: thumbnailKey,
+      uploaded_at: uploadedAt,
+      size: obj.size,
+      mime: obj.httpMetadata?.contentType || null,
+      type: "image",
+      markdown: `![${filename}](${publicUrl})`,
+      batch_id: batchId,
+      tags: [],
+      usage_count: 0,
+    });
   }
 
   // 按上传时间倒序（无时间的排在后面）
@@ -381,9 +418,9 @@ async function handleGenerateIndex(request, env) {
     return new Date(b.uploaded_at) - new Date(a.uploaded_at);
   });
 
-  // 构建 library.json（v0.3 架构升级）
+  // 构建 library.json
   const library = {
-    version: "0.3",
+    version: "0.3.1",
     generated_at: new Date().toISOString(),
     total: assets.length,
     assets,
@@ -571,7 +608,8 @@ function randomString(length) {
 // ------------------------------
 
 /**
- * POST /api/maintenance/scan — 扫描 images/ 并统计
+ * POST /api/maintenance/scan — 扫描图片并统计
+ * v0.3.1: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
  */
 async function handleMaintenanceScan(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -579,50 +617,53 @@ async function handleMaintenanceScan(request, env) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // 扫描 images/
-  const images = [];
-  let cursor;
-
+  // 加载 Asset Index 获取 original_path -> asset_id 映射
+  const pathToAssetId = new Map();
   try {
-    do {
-      const listed = await env.BUCKET.list({
-        prefix: "images/",
-        limit: 1000,
-        cursor,
-      });
-
-      for (const obj of listed.objects) {
-        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
-        images.push(obj);
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          pathToAssetId.set(asset.original_path, asset.asset_id);
+        }
       }
-
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
+    }
   } catch (err) {
-    return jsonResponse({ error: "scan-failed" }, 500);
+    // Asset Index 不存在时返回空映射
   }
 
-  // 扫描 thumbnails/
+  // 扫描所有图片
+  const images = await scanAllImages(env);
+
+  // 扫描两种缩略图
   const thumbnailIndex = await buildThumbnailIndex(env);
+  const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
   // 统计缺失缩略图
   let missingThumbnails = 0;
   for (const img of images) {
-    const { key: thumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
-    if (!thumbKey) missingThumbnails++;
+    const { key: oldThumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
+    const assetId = pathToAssetId.get(img.key);
+    const expectedNewThumbKey = assetId ? `assets/thumbnails/${assetId}.webp` : "";
+    const hasNewThumbnail = expectedNewThumbKey && assetThumbnailIndex.has(expectedNewThumbKey);
+
+    if (!oldThumbKey && !hasNewThumbnail) {
+      missingThumbnails++;
+    }
   }
 
   return jsonResponse({
     success: true,
     images: images.length,
-    thumbnails: thumbnailIndex.size,
+    thumbnails: thumbnailIndex.size + assetThumbnailIndex.size,
     missing_thumbnails: missingThumbnails,
   });
 }
 
 /**
  * POST /api/maintenance/scan-missing-thumbnails — 扫描缺失缩略图（不实际生成）
- * Worker 环境无法直接处理图片，此 API 仅返回缺失缩略图清单
+ * v0.3.1: 全量扫描 Bucket，返回 asset_id 用于前端生成缩略图
  */
 async function handleScanMissingThumbnails(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -630,41 +671,43 @@ async function handleScanMissingThumbnails(request, env) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // 扫描 images/
-  const images = [];
-  let cursor;
-
+  // 加载 Asset Index 获取 original_path -> asset_id 映射
+  const pathToAssetId = new Map();
   try {
-    do {
-      const listed = await env.BUCKET.list({
-        prefix: "images/",
-        limit: 1000,
-        cursor,
-      });
-
-      for (const obj of listed.objects) {
-        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
-        images.push(obj);
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          pathToAssetId.set(asset.original_path, asset.asset_id);
+        }
       }
-
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
+    }
   } catch (err) {
-    return jsonResponse({ error: "scan-failed" }, 500);
+    // Asset Index 不存在时返回空映射
   }
 
-  // 扫描 thumbnails/
+  // 扫描所有图片
+  const images = await scanAllImages(env);
+
+  // 扫描两种缩略图
   const thumbnailIndex = await buildThumbnailIndex(env);
+  const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
   // 收集缺失缩略图的图片
   const missing = [];
   for (const img of images) {
-    const { key: thumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
-    if (!thumbKey) {
+    const { key: oldThumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
+    const assetId = pathToAssetId.get(img.key);
+    const expectedNewThumbKey = assetId ? `assets/thumbnails/${assetId}.webp` : "";
+    const hasNewThumbnail = expectedNewThumbKey && assetThumbnailIndex.has(expectedNewThumbKey);
+
+    if (!oldThumbKey && !hasNewThumbnail) {
       missing.push({
         key: img.key,
         url: `${env.PUBLIC_BASE_URL}/${img.key}`,
         size: img.size,
+        asset_id: assetId || "",
       });
     }
   }
@@ -673,13 +716,14 @@ async function handleScanMissingThumbnails(request, env) {
     success: true,
     total_images: images.length,
     missing_thumbnails: missing.length,
-    missing_list: missing.slice(0, 100), // 限制返回数量，避免响应过大
-    note: "Worker 无法生成缩略图，请使用外部工具或客户端生成后上传到 R2",
+    missing_list: missing.slice(0, 100),
+    note: "仅返回缺失缩略图清单。如需自动生成，请在 Maintenance 页面使用 Generate Missing Thumbnails 功能。",
   });
 }
 
 /**
  * POST /api/maintenance/clean-orphans — 清理孤儿缩略图
+ * v0.3.1: 全量扫描 Bucket，同时清理 thumbnails/ 和 assets/thumbnails/ 下的孤儿缩略图
  */
 async function handleCleanOrphans(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -687,45 +731,49 @@ async function handleCleanOrphans(request, env) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // 扫描 images/
+  // 扫描所有图片
+  const allImages = await scanAllImages(env);
   const imageKeys = new Set();
-  let cursor;
+  const assetIds = new Set();
 
-  try {
-    do {
-      const listed = await env.BUCKET.list({
-        prefix: "images/",
-        limit: 1000,
-        cursor,
-      });
-
-      for (const obj of listed.objects) {
-        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
-        imageKeys.add(obj.key);
-      }
-
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
-  } catch (err) {
-    return jsonResponse({ error: "scan-failed" }, 500);
+  for (const img of allImages) {
+    imageKeys.add(img.key);
+    // 从文件名提取 asset_id（rz_ 前缀的）
+    const filename = img.key.split("/").pop();
+    const nameWithoutExt = filename.split(".")[0];
+    if (nameWithoutExt.startsWith("rz_")) {
+      assetIds.add(nameWithoutExt);
+    }
   }
 
-  // 扫描 thumbnails/
-  const thumbnailIndex = await buildThumbnailIndex(env);
+  // 从 Asset Index 获取所有 asset_id（包括 legacy）
+  try {
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          assetIds.add(asset.asset_id);
+        }
+      }
+    }
+  } catch (err) {
+    // 索引不存在不影响清理
+  }
 
-  // 找出孤儿缩略图
+  // 扫描两种缩略图
+  const oldThumbnailIndex = await buildThumbnailIndex(env);
+  const newThumbnailIndex = await buildAssetThumbnailIndex(env);
+
+  // 找出旧缩略图中的孤儿
   const orphans = [];
-  for (const thumbKey of thumbnailIndex) {
-    // 从 thumbnail key 反推 image key
-    // thumbnails/a/b/c-thumb.webp -> images/a/b/c.webp
+  for (const thumbKey of oldThumbnailIndex) {
     const relativePath = thumbKey.startsWith("thumbnails/") ? thumbKey.slice(11) : thumbKey;
 
-    // 移除 -thumb 后缀
     const ext = relativePath.includes(".") ? relativePath.slice(relativePath.lastIndexOf(".")) : "";
     const base = ext ? relativePath.slice(0, relativePath.length - ext.length) : relativePath;
     const baseWithoutThumb = base.endsWith("-thumb") ? base.slice(0, -6) : base;
 
-    // 尝试可能的原图扩展名
     const possibleExts = ext && ext !== ".webp" ? [ext, ".webp", ".jpg", ".png"] : [".webp", ".jpg", ".png", ".gif"];
     let hasOriginal = false;
 
@@ -742,7 +790,17 @@ async function handleCleanOrphans(request, env) {
     }
   }
 
-  // 删除孤儿缩略图（限制数量，避免 Worker 执行时间过长）
+  // 找出新缩略图中的孤儿
+  for (const thumbKey of newThumbnailIndex) {
+    const filename = thumbKey.split("/").pop();
+    const assetId = filename.split(".")[0];
+
+    if (!assetIds.has(assetId)) {
+      orphans.push(thumbKey);
+    }
+  }
+
+  // 删除孤儿缩略图（限制数量）
   const toDelete = orphans.slice(0, 100);
   let deleted = 0;
 
@@ -766,6 +824,7 @@ async function handleCleanOrphans(request, env) {
 
 /**
  * GET /api/maintenance/stats — 统计信息
+ * v0.3.1: 全量扫描 Bucket，统计所有图片和两种缩略图
  */
 async function handleMaintenanceStats(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -773,53 +832,59 @@ async function handleMaintenanceStats(request, env) {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
-  // 扫描 images/
-  const images = [];
-  let cursor;
+  // 加载 Asset Index 获取 original_path -> asset_id 映射
+  const pathToAssetId = new Map();
+  try {
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      const index = JSON.parse(await indexObj.text());
+      if (index.assets) {
+        for (const asset of index.assets) {
+          pathToAssetId.set(asset.original_path, asset.asset_id);
+        }
+      }
+    }
+  } catch (err) {
+    // Asset Index 不存在时返回空映射
+  }
+
+  // 扫描所有图片
+  const images = await scanAllImages(env);
+
+  // 计算大小和时间
   let totalSize = 0;
   let latestUpload = null;
   let oldestUpload = null;
 
-  try {
-    do {
-      const listed = await env.BUCKET.list({
-        prefix: "images/",
-        limit: 1000,
-        cursor,
-      });
-
-      for (const obj of listed.objects) {
-        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
-
-        images.push(obj);
-        totalSize += obj.size || 0;
-
-        if (obj.uploaded) {
-          const uploadTime = obj.uploaded.toISOString();
-          if (!latestUpload || uploadTime > latestUpload) latestUpload = uploadTime;
-          if (!oldestUpload || uploadTime < oldestUpload) oldestUpload = uploadTime;
-        }
-      }
-
-      cursor = listed.truncated ? listed.cursor : undefined;
-    } while (cursor);
-  } catch (err) {
-    return jsonResponse({ error: "scan-failed" }, 500);
+  for (const img of images) {
+    totalSize += img.size || 0;
+    if (img.uploaded) {
+      const uploadTime = img.uploaded.toISOString();
+      if (!latestUpload || uploadTime > latestUpload) latestUpload = uploadTime;
+      if (!oldestUpload || uploadTime < oldestUpload) oldestUpload = uploadTime;
+    }
   }
 
-  // 扫描 thumbnails/
+  // 扫描两种缩略图
   const thumbnailIndex = await buildThumbnailIndex(env);
+  const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
   // 统计缺失缩略图
   let missingThumbnails = 0;
   for (const img of images) {
-    const { key: thumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
-    if (!thumbKey) missingThumbnails++;
+    const { key: oldThumbKey } = deriveThumbnailInfo(img.key, env, thumbnailIndex);
+    const assetId = pathToAssetId.get(img.key);
+    const expectedNewThumbKey = assetId ? `assets/thumbnails/${assetId}.webp` : "";
+    const hasNewThumbnail = expectedNewThumbKey && assetThumbnailIndex.has(expectedNewThumbKey);
+
+    if (!oldThumbKey && !hasNewThumbnail) {
+      missingThumbnails++;
+    }
   }
 
   return jsonResponse({
     images: images.length,
-    thumbnails: thumbnailIndex.size,
+    thumbnails: thumbnailIndex.size + assetThumbnailIndex.size,
     missing_thumbnails: missingThumbnails,
     storage_bytes: totalSize,
     storage_mb: Math.round(totalSize / 1024 / 1024 * 100) / 100,
@@ -842,7 +907,8 @@ async function handleMaintenanceStats(request, env) {
 
 /**
  * 生成 Asset ID
- * 格式：rz_YYYYMMDD_HHMMSS_random6
+ * 格式：rz_YYYYMMDD_HHMMSSmmm_random6
+ * 包含毫秒级时间戳，避免并发冲突
  */
 function generateAssetId(uploadTime = new Date()) {
   const yyyy = uploadTime.getUTCFullYear();
@@ -851,14 +917,15 @@ function generateAssetId(uploadTime = new Date()) {
   const HH = String(uploadTime.getUTCHours()).padStart(2, '0');
   const MM = String(uploadTime.getUTCMinutes()).padStart(2, '0');
   const SS = String(uploadTime.getUTCSeconds()).padStart(2, '0');
+  const mmm = String(uploadTime.getUTCMilliseconds()).padStart(3, '0');
   const random = randomString(6);
 
-  return `rz_${yyyy}${mm}${dd}_${HH}${MM}${SS}_${random}`;
+  return `rz_${yyyy}${mm}${dd}_${HH}${MM}${SS}${mmm}_${random}`;
 }
 
 /**
  * POST /api/asset-index/build — 扫描 R2 构建 Asset Index
- * v0.3.1: 扫描 images/ 和 media/original/，统一使用 assets/thumbnails/{asset_id}.webp
+ * v0.3.1: 全量扫描 Bucket 所有图片（排除系统目录），统一使用 assets/thumbnails/{asset_id}.webp
  * Legacy 缩略图迁移：基于 original_path 映射
  */
 async function handleBuildAssetIndex(request, env) {
@@ -869,7 +936,7 @@ async function handleBuildAssetIndex(request, env) {
 
   const now = new Date().toISOString();
 
-  // 加载已有 metadata
+  // 加载已有 metadata 索引
   const existingMetadata = new Map();
   try {
     const metadataIndexObj = await env.BUCKET.get("assets/metadata/index.json");
@@ -885,18 +952,81 @@ async function handleBuildAssetIndex(request, env) {
     // 首次构建
   }
 
+  // 全量扫描所有图片
+  const allImages = await scanAllImages(env);
   const assets = [];
 
-  // 扫描 images/（legacy 图片）
-  await scanDirectory(env, "images/", existingMetadata, assets, now, "legacy");
+  for (const obj of allImages) {
+    // 判断来源：文件名含 rz_ 前缀的视为 upload，否则 legacy
+    const filename = obj.key.split("/").pop();
+    const nameWithoutExt = filename.split(".")[0];
+    const source = nameWithoutExt.startsWith("rz_") ? "upload" : "legacy";
 
-  // 扫描 media/original/（新上传图片）
-  await scanDirectory(env, "media/original/", existingMetadata, assets, now, "upload");
+    // 提取或生成 Asset ID
+    let assetId = existingMetadata.get(obj.key);
+    if (!assetId) {
+      if (source === "upload" && nameWithoutExt.startsWith("rz_")) {
+        assetId = nameWithoutExt;
+      } else {
+        assetId = generateAssetId(obj.uploaded || new Date());
+      }
+    }
 
-  // 构建旧缩略图索引（用于 Legacy 迁移）
+    // 构建 metadata（保留已有字段）
+    let metadata = {
+      asset_id: assetId,
+      source: source,
+      original_path: obj.key,
+      original_name: filename,
+      type: "image",
+      mime: obj.httpMetadata?.contentType || null,
+      size: obj.size,
+      width: null,
+      height: null,
+      uploaded_at: obj.uploaded ? obj.uploaded.toISOString() : null,
+      thumbnail_status: "pending",
+      thumbnail_path: "",
+      title: "",
+      description: "",
+      used_in: [],
+      tags: [],
+      article_ref: null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    // 保留人工修改的字段
+    if (existingMetadata.has(obj.key)) {
+      try {
+        const existingMetaObj = await env.BUCKET.get(`assets/metadata/${assetId}.json`);
+        if (existingMetaObj) {
+          const existingMeta = JSON.parse(await existingMetaObj.text());
+          if (existingMeta.title) metadata.title = existingMeta.title;
+          if (existingMeta.description) metadata.description = existingMeta.description;
+          if (existingMeta.used_in && Array.isArray(existingMeta.used_in)) {
+            metadata.used_in = existingMeta.used_in;
+          }
+          if (existingMeta.tags && Array.isArray(existingMeta.tags)) {
+            metadata.tags = existingMeta.tags;
+          }
+          if (existingMeta.created_at) metadata.created_at = existingMeta.created_at;
+        }
+      } catch (err) {
+        // 读取失败使用默认值
+      }
+    }
+
+    assets.push(metadata);
+
+    await env.BUCKET.put(
+      `assets/metadata/${assetId}.json`,
+      JSON.stringify(metadata, null, 2),
+      { httpMetadata: { contentType: "application/json" } }
+    );
+  }
+
+  // 构建缩略图索引
   const oldThumbnailIndex = await buildThumbnailIndex(env);
-
-  // 构建新缩略图索引（assets/thumbnails/）
   const newThumbnailIndex = await buildAssetThumbnailIndex(env);
 
   // 更新缩略图状态 + 迁移旧缩略图
@@ -910,12 +1040,10 @@ async function handleBuildAssetIndex(request, env) {
       continue;
     }
 
-    // Legacy 缩略图迁移：基于 original_path 映射
-    // images/test/IMG_001.jpg -> thumbnails/test/IMG_001-thumb.webp
+    // Legacy 缩略图迁移
     if (asset.source === "legacy") {
       const { key: oldThumbKey } = deriveThumbnailInfo(asset.original_path, env, oldThumbnailIndex);
       if (oldThumbKey) {
-        // 迁移：复制旧缩略图到新路径
         try {
           const oldThumbObj = await env.BUCKET.get(oldThumbKey);
           if (oldThumbObj) {
@@ -930,12 +1058,11 @@ async function handleBuildAssetIndex(request, env) {
             continue;
           }
         } catch (err) {
-          // 迁移失败不中断流程
+          // 迁移失败不中断
         }
       }
     }
 
-    // 原图存在但缩略图不存在 -> pending
     asset.thumbnail_status = "pending";
     asset.thumbnail_path = "";
   }
@@ -1022,8 +1149,8 @@ async function scanDirectory(env, prefix, existingMetadata, assets, now, source)
           }
         }
 
-        // 写入 metadata
-        const metadata = {
+        // 写入 metadata（保留已有字段）
+        let metadata = {
           asset_id: assetId,
           source: source,
           original_path: obj.key,
@@ -1034,7 +1161,7 @@ async function scanDirectory(env, prefix, existingMetadata, assets, now, source)
           width: null,
           height: null,
           uploaded_at: obj.uploaded ? obj.uploaded.toISOString() : null,
-          thumbnail_status: "pending", // 稍后更新
+          thumbnail_status: "pending",
           thumbnail_path: "",
           title: "",
           description: "",
@@ -1044,6 +1171,27 @@ async function scanDirectory(env, prefix, existingMetadata, assets, now, source)
           created_at: now,
           updated_at: now,
         };
+
+        // 如果已有 metadata，保留人工修改的字段
+        if (existingMetadata.has(obj.key)) {
+          try {
+            const existingMetaObj = await env.BUCKET.get(`assets/metadata/${assetId}.json`);
+            if (existingMetaObj) {
+              const existingMeta = JSON.parse(await existingMetaObj.text());
+              if (existingMeta.title) metadata.title = existingMeta.title;
+              if (existingMeta.description) metadata.description = existingMeta.description;
+              if (existingMeta.used_in && Array.isArray(existingMeta.used_in)) {
+                metadata.used_in = existingMeta.used_in;
+              }
+              if (existingMeta.tags && Array.isArray(existingMeta.tags)) {
+                metadata.tags = existingMeta.tags;
+              }
+              if (existingMeta.created_at) metadata.created_at = existingMeta.created_at;
+            }
+          } catch (err) {
+            // 读取失败使用默认值
+          }
+        }
 
         assets.push(metadata);
 
@@ -1093,6 +1241,46 @@ async function buildAssetThumbnailIndex(env) {
 function isImage(contentType) {
   if (!contentType) return false;
   return contentType.startsWith("image/");
+}
+
+/**
+ * 扫描 Bucket 中所有图片（排除系统目录）
+ */
+async function scanAllImages(env) {
+  const images = [];
+  let cursor;
+
+  try {
+    do {
+      const listed = await env.BUCKET.list({
+        limit: 1000,
+        cursor,
+      });
+
+      for (const obj of listed.objects) {
+        if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
+        if (isSystemPath(obj.key)) continue;
+        if (!isImage(obj.httpMetadata?.contentType)) continue;
+        images.push(obj);
+      }
+
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+  } catch (err) {
+    // 扫描失败返回空数组
+  }
+
+  return images;
+}
+
+/**
+ * 判断是否为系统文件/目录（排除扫描）
+ */
+function isSystemPath(key) {
+  for (const prefix of SYSTEM_PREFIXES) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
 }
 
 /**

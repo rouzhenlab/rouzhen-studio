@@ -117,21 +117,33 @@
   <!-- Scan R2 -->
   <section class="maintenance-section">
     <h2>Scan R2</h2>
-    <p>重新扫描 images/ 目录，发现新增图片并同步素材库。</p>
+    <p>重新扫描 images/ 和 media/original/ 目录，发现新增图片并同步素材库。</p>
     <div class="action-row">
       <button id="scanBtn" class="btn btn-sm btn-primary">Scan images/</button>
+      <button id="buildIndexBtn" class="btn btn-sm btn-outline">Build Asset Index</button>
     </div>
     <div id="scanLog" class="log-area" hidden></div>
+    <div id="buildIndexLog" class="log-area" hidden></div>
   </section>
 
   <!-- Scan Missing Thumbnails -->
   <section class="maintenance-section">
     <h2>Scan Missing Thumbnails</h2>
-    <p>扫描缺失缩略图的图片，Worker 不会实际生成，仅返回清单。需使用外部工具生成后上传。</p>
+    <p>扫描并列出所有缺失缩略图的图片（仅查看清单）。如需自动生成，请使用下方的 Generate Missing Thumbnails。</p>
     <div class="action-row">
-      <button id="scanMissingBtn" class="btn btn-sm btn-primary">Scan Missing</button>
+      <button id="scanMissingBtn" class="btn btn-sm btn-outline">Scan Missing</button>
     </div>
     <div id="scanMissingLog" class="log-area" hidden></div>
+  </section>
+
+  <!-- Generate Missing Thumbnails -->
+  <section class="maintenance-section">
+    <h2>Generate Missing Thumbnails</h2>
+    <p>在浏览器中自动生成并上传缺失的缩略图（使用 Canvas 处理，每张约 400px 长边）。生成前请确保已执行 Build Asset Index。</p>
+    <div class="action-row">
+      <button id="generateThumbnailsBtn" class="btn btn-sm btn-primary">Generate &amp; Upload</button>
+    </div>
+    <div id="generateLog" class="log-area" hidden></div>
   </section>
 
   <!-- Clean Orphan Thumbnails -->

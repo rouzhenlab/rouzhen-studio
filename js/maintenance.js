@@ -18,7 +18,9 @@ const tokenConfirmBtn = document.getElementById("tokenConfirmBtn");
 
 const refreshStatsBtn = document.getElementById("refreshStatsBtn");
 const scanBtn = document.getElementById("scanBtn");
+const buildIndexBtn = document.getElementById("buildIndexBtn");
 const scanMissingBtn = document.getElementById("scanMissingBtn");
+const generateThumbnailsBtn = document.getElementById("generateThumbnailsBtn");
 const cleanOrphansBtn = document.getElementById("cleanOrphansBtn");
 
 const statusEl = document.getElementById("galleryStatus");
@@ -112,6 +114,47 @@ scanBtn.addEventListener("click", async () => {
 });
 
 // ------------------------------
+// Build Asset Index
+// ------------------------------
+buildIndexBtn.addEventListener("click", async () => {
+  const token = getStoredToken();
+  if (!token) return openTokenOverlay();
+
+  const logEl = document.getElementById("buildIndexLog");
+  logEl.hidden = false;
+  logEl.innerHTML = "";
+
+  log(logEl, "开始构建 Asset Index…", "info");
+  buildIndexBtn.disabled = true;
+
+  try {
+    const res = await fetch("/api/asset-index/build", {
+      method: "POST",
+      headers: { "X-Upload-Token": token },
+    });
+
+    if (!res.ok) throw new Error("build-failed");
+
+    const data = await res.json();
+    log(logEl, `构建完成`, "success");
+    log(logEl, `总资产: ${data.total}`, "info");
+    log(logEl, `Legacy 资产: ${data.legacy}`, "info");
+    log(logEl, `上传资产: ${data.uploaded}`, "info");
+    log(logEl, `缺失缩略图: ${data.missing_thumbnails}`, "info");
+
+    if (data.missing_thumbnails > 0) {
+      log(logEl, `可以使用 "Generate Missing Thumbnails" 生成缺失的缩略图`, "info");
+    }
+
+    loadStats(token);
+  } catch (err) {
+    log(logEl, `构建失败: ${err.message}`, "error");
+  } finally {
+    buildIndexBtn.disabled = false;
+  }
+});
+
+// ------------------------------
 // Scan Missing Thumbnails
 // ------------------------------
 scanMissingBtn.addEventListener("click", async () => {
@@ -153,6 +196,161 @@ scanMissingBtn.addEventListener("click", async () => {
     scanMissingBtn.disabled = false;
   }
 });
+
+// ------------------------------
+// Generate Missing Thumbnails
+// ------------------------------
+generateThumbnailsBtn.addEventListener("click", async () => {
+  const token = getStoredToken();
+  if (!token) return openTokenOverlay();
+
+  const logEl = document.getElementById("generateLog");
+  logEl.hidden = false;
+  logEl.innerHTML = "";
+
+  log(logEl, "获取缺失缩略图清单…", "info");
+  generateThumbnailsBtn.disabled = true;
+
+  try {
+    const res = await fetch("/api/maintenance/scan-missing-thumbnails", {
+      method: "POST",
+      headers: { "X-Upload-Token": token },
+    });
+
+    if (!res.ok) throw new Error("获取清单失败");
+
+    const data = await res.json();
+    const missingList = data.missing_list || [];
+
+    if (missingList.length === 0) {
+      log(logEl, "没有缺失的缩略图", "success");
+      generateThumbnailsBtn.disabled = false;
+      return;
+    }
+
+    const processableList = missingList.filter(item => item.asset_id && item.asset_id.trim());
+    const unprocessableCount = missingList.length - processableList.length;
+
+    if (unprocessableCount > 0) {
+      log(logEl, `跳过 ${unprocessableCount} 张缺少 Asset ID 的图片，请先执行 Build Asset Index`, "info");
+    }
+
+    if (processableList.length === 0) {
+      log(logEl, "没有可处理的图片", "info");
+      generateThumbnailsBtn.disabled = false;
+      return;
+    }
+
+    log(logEl, `需要生成 ${processableList.length} 张缩略图…`, "info");
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < processableList.length; i++) {
+      const item = processableList[i];
+      log(logEl, `[${i + 1}/${processableList.length}] 处理: ${item.key}`, "info");
+
+      try {
+        await generateAndUploadThumbnail(item.key, item.asset_id, token, logEl);
+        successCount++;
+        log(logEl, `  ✓ 成功`, "success");
+      } catch (err) {
+        failCount++;
+        log(logEl, `  ✗ 失败: ${err.message}`, "error");
+      }
+    }
+
+    log(logEl, "", "info");
+    log(logEl, `完成！成功: ${successCount}, 失败: ${failCount}`, successCount === processableList.length ? "success" : "info");
+
+    if (successCount > 0) {
+      log(logEl, "重新构建 Asset Index…", "info");
+      const buildRes = await fetch("/api/asset-index/build", {
+        method: "POST",
+        headers: { "X-Upload-Token": token },
+      });
+      if (buildRes.ok) {
+        log(logEl, "Asset Index 已更新", "success");
+        loadStats(token);
+      } else {
+        log(logEl, "Asset Index 更新失败，请手动点击 Scan R2", "error");
+      }
+    }
+
+  } catch (err) {
+    log(logEl, `错误: ${err.message}`, "error");
+  } finally {
+    generateThumbnailsBtn.disabled = false;
+  }
+});
+
+async function generateAndUploadThumbnail(imageKey, assetId, token, logEl) {
+  const baseUrl = window.location.origin;
+  const imageUrl = `${baseUrl}/${imageKey}`;
+
+  const img = await loadImage(imageUrl);
+  const thumbnailBlob = await generateThumbnail(img);
+
+  const thumbKey = `assets/thumbnails/${assetId}.webp`;
+  const uploadUrl = "/upload";
+
+  const formData = new FormData();
+  formData.append("file", thumbnailBlob, `${assetId}.webp`);
+  formData.append("thumbnail_key", thumbKey);
+
+  const res = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "X-Upload-Token": token },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "unknown");
+    throw new Error(`上传失败: ${res.status} ${errText}`);
+  }
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`无法加载图片: ${url}`));
+    img.src = url;
+  });
+}
+
+function generateThumbnail(img) {
+  return new Promise((resolve) => {
+    const maxWidth = 400;
+    const maxHeight = 400;
+
+    let width = img.width;
+    let height = img.height;
+
+    if (width > maxWidth) {
+      height = (height * maxWidth) / width;
+      width = maxWidth;
+    }
+    if (height > maxHeight) {
+      width = (width * maxHeight) / height;
+      height = maxHeight;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, width, height);
+
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, "image/webp", 0.8);
+  });
+}
 
 // ------------------------------
 // Clean Orphan Thumbnails
