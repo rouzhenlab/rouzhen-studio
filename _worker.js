@@ -1,5 +1,5 @@
 // ROUZHEN Studio — Pages Functions (_worker.js)
-// v0.3.13：Asset Index Layer
+// v0.3.15：Asset Index Layer
 // - v0.3 基础架构保留（R2 唯一数据源 + 镜像缩略图）
 // - 新增 Asset Index Layer：管理 asset_id + metadata + 缩略图状态
 // - 旧图片保持原路径，新上传使用 Asset ID 命名
@@ -87,7 +87,7 @@ export default {
       return handleFileProxy(url, env);
     }
 
-    // Asset Index API (v0.3.13)
+    // Asset Index API (v0.3.15)
     if (url.pathname === "/api/asset-index/build" && request.method === "POST") {
       return handleBuildAssetIndex(request, env);
     }
@@ -115,7 +115,7 @@ export default {
 
 // ------------------------------
 // POST /upload — 上传原图 + 缩略图
-// v0.3.13: 新上传使用 Asset ID 命名
+// v0.3.15: 新上传使用 Asset ID 命名
 // ------------------------------
 async function handleUpload(request, env) {
   // 口令校验
@@ -150,7 +150,7 @@ async function handleUpload(request, env) {
     return jsonResponse({ error: "file-too-large" }, 400);
   }
 
-  // v0.3.13: 生成 Asset ID
+  // v0.3.15: 生成 Asset ID
   const now = new Date();
   const assetId = generateAssetId(now);
   const ext = extractExtension(file.name, file.type);
@@ -185,7 +185,7 @@ async function handleUpload(request, env) {
   let thumbnailKey = "";
 
   if (thumbnail && typeof thumbnail !== "string" && thumbnail.size > 0) {
-    // v0.3.13: 统一缩略图路径 assets/thumbnails/{asset_id}.webp
+    // v0.3.15: 统一缩略图路径 assets/thumbnails/{asset_id}.webp
     const thumbExt = ".webp"; // 统一使用 webp
     thumbnailKey = `assets/thumbnails/${assetId}${thumbExt}`;
 
@@ -201,7 +201,7 @@ async function handleUpload(request, env) {
     }
   }
 
-  // v0.3.13: 创建 metadata 文件
+  // v0.3.15: 创建 metadata 文件
   const metadata = {
     asset_id: assetId,
     source: "upload",
@@ -338,7 +338,7 @@ async function handleUploadThumbnail(request, env) {
 
 // ------------------------------
 // GET /api/assets — 素材列表（分页）
-// v0.3.13: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+// v0.3.15: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleListAssets(request, env) {
   // 口令校验（gallery 也受 Token 保护）
@@ -431,7 +431,7 @@ async function handleListAssets(request, env) {
 
 // ------------------------------
 // POST /api/generate-index — 生成 library.json 索引到 R2
-// v0.3.13: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+// v0.3.15: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
 async function handleGenerateIndex(request, env) {
   // 口令校验
@@ -518,7 +518,7 @@ async function handleGenerateIndex(request, env) {
 
   // 构建 library.json
   const library = {
-    version: "0.3.13",
+    version: "0.3.15",
     generated_at: new Date().toISOString(),
     total: assets.length,
     assets,
@@ -760,7 +760,7 @@ function randomString(length) {
 
 /**
  * POST /api/maintenance/scan — 扫描图片并统计
- * v0.3.13: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
+ * v0.3.15: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
  */
 async function handleMaintenanceScan(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -823,7 +823,7 @@ async function handleMaintenanceScan(request, env) {
 
 /**
  * POST /api/maintenance/scan-missing-thumbnails — 扫描缺失缩略图（不实际生成）
- * v0.3.13: 全量扫描 Bucket，返回 asset_id 用于前端生成缩略图
+ * v0.3.15: 全量扫描 Bucket，返回 asset_id 用于前端生成缩略图
  */
 async function handleScanMissingThumbnails(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -883,7 +883,7 @@ async function handleScanMissingThumbnails(request, env) {
 
 /**
  * POST /api/maintenance/clean-orphans — 清理孤儿缩略图
- * v0.3.13: 全量扫描 Bucket，同时清理 thumbnails/ 和 assets/thumbnails/ 下的孤儿缩略图
+ * v0.3.15: 全量扫描 Bucket，同时清理 thumbnails/ 和 assets/thumbnails/ 下的孤儿缩略图
  */
 async function handleCleanOrphans(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -984,7 +984,7 @@ async function handleCleanOrphans(request, env) {
 
 /**
  * GET /api/maintenance/stats — 统计信息
- * v0.3.13: 全量扫描 Bucket，统计所有图片和两种缩略图
+ * v0.3.15: 全量扫描 Bucket，统计所有图片和两种缩略图
  */
 async function handleMaintenanceStats(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -1071,7 +1071,7 @@ async function handleMaintenanceStats(request, env) {
 //   2. POST /api/generate-index   建立 library.json 索引
 
 // ------------------------------
-// Asset Index Layer (v0.3.13)
+// Asset Index Layer (v0.3.15)
 // ------------------------------
 
 /**
@@ -1094,7 +1094,7 @@ function generateAssetId(uploadTime = new Date()) {
 
 /**
  * POST /api/asset-index/build — 扫描 R2 构建 Asset Index
- * v0.3.13: 全量扫描 Bucket 所有图片（排除系统目录），统一使用 assets/thumbnails/{asset_id}.webp
+ * v0.3.15: 全量扫描 Bucket 所有图片（排除系统目录），统一使用 assets/thumbnails/{asset_id}.webp
  * Legacy 缩略图迁移：基于 original_path 映射
  */
 async function handleBuildAssetIndex(request, env) {
@@ -1123,6 +1123,11 @@ async function handleBuildAssetIndex(request, env) {
 
   // 全量扫描所有图片
   const allImages = await scanAllImages(env);
+
+  // 构建缩略图索引（提前构建，用于后续判断）
+  const oldThumbnailIndex = await buildThumbnailIndex(env);
+  const newThumbnailIndex = await buildAssetThumbnailIndex(env);
+
   const assets = [];
 
   for (const obj of allImages) {
@@ -1179,14 +1184,49 @@ async function handleBuildAssetIndex(request, env) {
             metadata.tags = existingMeta.tags;
           }
           if (existingMeta.created_at) metadata.created_at = existingMeta.created_at;
+          // 保留已有的缩略图状态
+          if (existingMeta.thumbnail_status) metadata.thumbnail_status = existingMeta.thumbnail_status;
+          if (existingMeta.thumbnail_path) metadata.thumbnail_path = existingMeta.thumbnail_path;
         }
       } catch (err) {
         // 读取失败使用默认值
       }
     }
 
+    // 检查缩略图状态（如果没有保留已有状态）
+    const expectedNewThumbKey = `assets/thumbnails/${assetId}.webp`;
+    
+    // 检查新路径是否已有缩略图
+    if (newThumbnailIndex.has(expectedNewThumbKey)) {
+      metadata.thumbnail_status = "generated";
+      metadata.thumbnail_path = expectedNewThumbKey;
+    } else if (metadata.thumbnail_status !== "generated") {
+      // 尝试 Legacy 缩略图迁移
+      if (source === "legacy") {
+        const { key: oldThumbKey } = deriveThumbnailInfo(obj.key, env, oldThumbnailIndex);
+        if (oldThumbKey) {
+          try {
+            const oldThumbObj = await env.BUCKET.get(oldThumbKey);
+            if (oldThumbObj) {
+              await env.BUCKET.put(
+                expectedNewThumbKey,
+                oldThumbObj.body,
+                { httpMetadata: { contentType: "image/webp" } }
+              );
+              newThumbnailIndex.add(expectedNewThumbKey);
+              metadata.thumbnail_status = "generated";
+              metadata.thumbnail_path = expectedNewThumbKey;
+            }
+          } catch (err) {
+            // 迁移失败，保持 pending
+          }
+        }
+      }
+    }
+
     assets.push(metadata);
 
+    // 写入 metadata 文件（包含已更新的缩略图状态）
     await env.BUCKET.put(
       `assets/metadata/${assetId}.json`,
       JSON.stringify(metadata, null, 2),
@@ -1194,51 +1234,9 @@ async function handleBuildAssetIndex(request, env) {
     );
   }
 
-  // 构建缩略图索引
-  const oldThumbnailIndex = await buildThumbnailIndex(env);
-  const newThumbnailIndex = await buildAssetThumbnailIndex(env);
-
-  // 更新缩略图状态 + 迁移旧缩略图
-  for (const asset of assets) {
-    const expectedNewThumbKey = `assets/thumbnails/${asset.asset_id}.webp`;
-
-    // 检查新路径是否已有缩略图
-    if (newThumbnailIndex.has(expectedNewThumbKey)) {
-      asset.thumbnail_status = "generated";
-      asset.thumbnail_path = expectedNewThumbKey;
-      continue;
-    }
-
-    // Legacy 缩略图迁移
-    if (asset.source === "legacy") {
-      const { key: oldThumbKey } = deriveThumbnailInfo(asset.original_path, env, oldThumbnailIndex);
-      if (oldThumbKey) {
-        try {
-          const oldThumbObj = await env.BUCKET.get(oldThumbKey);
-          if (oldThumbObj) {
-            await env.BUCKET.put(
-              expectedNewThumbKey,
-              oldThumbObj.body,
-              { httpMetadata: { contentType: "image/webp" } }
-            );
-            newThumbnailIndex.add(expectedNewThumbKey);
-            asset.thumbnail_status = "generated";
-            asset.thumbnail_path = expectedNewThumbKey;
-            continue;
-          }
-        } catch (err) {
-          // 迁移失败不中断
-        }
-      }
-    }
-
-    asset.thumbnail_status = "pending";
-    asset.thumbnail_path = "";
-  }
-
   // 写入 metadata 索引
   const metadataIndex = {
-    version: "0.3.13",
+    version: "0.3.15",
     generated_at: now,
     total: assets.length,
     assets: assets.map(a => ({
@@ -1257,7 +1255,7 @@ async function handleBuildAssetIndex(request, env) {
 
   // 写入总索引
   const assetIndex = {
-    version: "0.3.13",
+    version: "0.3.15",
     generated_at: now,
     total: assets.length,
     legacy_assets: assets.filter(a => a.source === "legacy").length,
