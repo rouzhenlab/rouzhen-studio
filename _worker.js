@@ -1295,7 +1295,7 @@ async function handleGetAssetIndex(request, env) {
   try {
     const obj = await env.BUCKET.get("assets/metadata/index.json");
     if (!obj) {
-      return jsonResponse({ error: "no-index", message: "请先构建 Asset Index" }, 404 });
+      return jsonResponse({ error: "no-index", message: "请先构建 Asset Index" }, 404);
     }
 
     const index = JSON.parse(await obj.text());
