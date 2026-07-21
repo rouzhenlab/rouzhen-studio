@@ -305,12 +305,13 @@ async function handleListAssets(request, env) {
     if (assetId) {
       const expectedNewThumbKey = `assets/thumbnails/${assetId}.webp`;
       if (assetThumbnailIndex.has(expectedNewThumbKey)) {
-        thumbnailUrl = `${env.PUBLIC_BASE_URL}/${expectedNewThumbKey}`;
+        thumbnailUrl = `${env.PUBLIC_BASE_URL}/api/thumb/${expectedNewThumbKey}`;
       }
     }
     
     if (!thumbnailUrl) {
-      thumbnailUrl = deriveThumbnailUrl(obj.key, env, thumbnailIndex);
+      const { url: oldThumbUrl } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
+      thumbnailUrl = oldThumbUrl ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbUrl}` : "";
     }
 
     const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
@@ -384,15 +385,15 @@ async function handleGenerateIndex(request, env) {
     if (assetId) {
       const expectedNewThumbKey = `assets/thumbnails/${assetId}.webp`;
       if (assetThumbnailIndex.has(expectedNewThumbKey)) {
-        thumbnailUrl = `${env.PUBLIC_BASE_URL}/${expectedNewThumbKey}`;
+        thumbnailUrl = `${env.PUBLIC_BASE_URL}/api/thumb/${expectedNewThumbKey}`;
         thumbnailKey = expectedNewThumbKey;
       }
     }
     
     if (!thumbnailUrl) {
-      const { url, key } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
-      thumbnailUrl = url;
-      thumbnailKey = key;
+      const { url: oldThumbUrl, key: oldThumbKey } = deriveThumbnailInfo(obj.key, env, thumbnailIndex);
+      thumbnailUrl = oldThumbUrl ? `${env.PUBLIC_BASE_URL}/api/thumb/${oldThumbUrl}` : "";
+      thumbnailKey = oldThumbKey;
     }
 
     const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
@@ -698,6 +699,15 @@ async function handleMaintenanceScan(request, env) {
   const thumbnailIndex = await buildThumbnailIndex(env);
   const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
+  // 统计有效的缩略图（去重）
+  const validThumbnails = new Set();
+  for (const key of assetThumbnailIndex) {
+    validThumbnails.add(key);
+  }
+  for (const key of thumbnailIndex) {
+    validThumbnails.add(key);
+  }
+
   // 统计缺失缩略图
   let missingThumbnails = 0;
   for (const img of images) {
@@ -714,7 +724,7 @@ async function handleMaintenanceScan(request, env) {
   return jsonResponse({
     success: true,
     images: images.length,
-    thumbnails: thumbnailIndex.size + assetThumbnailIndex.size,
+    thumbnails: validThumbnails.size,
     missing_thumbnails: missingThumbnails,
   });
 }
@@ -927,6 +937,15 @@ async function handleMaintenanceStats(request, env) {
   const thumbnailIndex = await buildThumbnailIndex(env);
   const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
 
+  // 统计有效的缩略图（去重：新路径优先，旧路径作为补充）
+  const validThumbnails = new Set();
+  for (const key of assetThumbnailIndex) {
+    validThumbnails.add(key);
+  }
+  for (const key of thumbnailIndex) {
+    validThumbnails.add(key);
+  }
+
   // 统计缺失缩略图
   let missingThumbnails = 0;
   for (const img of images) {
@@ -942,7 +961,7 @@ async function handleMaintenanceStats(request, env) {
 
   return jsonResponse({
     images: images.length,
-    thumbnails: thumbnailIndex.size + assetThumbnailIndex.size,
+    thumbnails: validThumbnails.size,
     missing_thumbnails: missingThumbnails,
     storage_bytes: totalSize,
     storage_mb: Math.round(totalSize / 1024 / 1024 * 100) / 100,
