@@ -77,6 +77,11 @@ export default {
       return handleThumbProxy(url, env);
     }
 
+    // 文件代理（绕过 R2 公开 URL 的 CORS 限制，用于 Canvas 加载图片）
+    if (url.pathname.startsWith("/api/file/") && request.method === "GET") {
+      return handleFileProxy(url, env);
+    }
+
     // Asset Index API (v0.3.1)
     if (url.pathname === "/api/asset-index/build" && request.method === "POST") {
       return handleBuildAssetIndex(request, env);
@@ -561,6 +566,59 @@ async function handleThumbProxy(url, env) {
     });
   } catch (err) {
     return jsonResponse({ error: "thumb-fetch-failed" }, 500);
+  }
+}
+
+/**
+ * GET /api/file/* — 文件代理（绕过 R2 CORS 限制）
+ * 用于 Canvas 加载图片生成缩略图
+ */
+async function handleFileProxy(url, env) {
+  // 提取 R2 key: /api/file/images/2026/07/19/xxx.jpg → images/2026/07/19/xxx.jpg
+  const key = url.pathname.replace("/api/file/", "");
+  if (!key) {
+    return jsonResponse({ error: "no-key" }, 400);
+  }
+
+  // 禁止访问系统文件
+  if (isSystemPath(key)) {
+    return jsonResponse({ error: "forbidden" }, 403);
+  }
+
+  try {
+    const obj = await env.BUCKET.get(key);
+    if (!obj) {
+      return jsonResponse({ error: "not-found" }, 404);
+    }
+
+    // 尝试获取 contentType，如果没有则根据扩展名推断
+    let contentType = obj.httpMetadata?.contentType;
+    if (!contentType) {
+      const ext = key.split(".").pop()?.toLowerCase();
+      const mimeMap = {
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        gif: "image/gif",
+        webp: "image/webp",
+        bmp: "image/bmp",
+        svg: "image/svg+xml",
+        heic: "image/heic",
+        heif: "image/heif",
+        avif: "image/avif",
+      };
+      contentType = mimeMap[ext] || "application/octet-stream";
+    }
+
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=86400",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    return jsonResponse({ error: "file-fetch-failed" }, 500);
   }
 }
 

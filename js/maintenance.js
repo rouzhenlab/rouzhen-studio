@@ -286,7 +286,8 @@ generateThumbnailsBtn.addEventListener("click", async () => {
 
 async function generateAndUploadThumbnail(imageKey, assetId, token, logEl) {
   const baseUrl = window.location.origin;
-  const imageUrl = `${baseUrl}/${imageKey}`;
+  // 使用 /api/file/ 代理绕过 R2 CORS 限制
+  const imageUrl = `${baseUrl}/api/file/${imageKey}`;
 
   const img = await loadImage(imageUrl);
   const thumbnailBlob = await generateThumbnail(img);
