@@ -115,10 +115,10 @@
 
   <header class="gallery-header">
     <a href="/" class="gallery-back">← 上传</a>
-    <h1>Asset Library</h1>
+    <h1>资产库</h1>
     <div class="gallery-actions">
-      <a href="gallery.html" class="btn btn-sm btn-outline">v0.3 Gallery</a>
-      <a href="maintenance.html" class="btn btn-sm btn-outline">Maintenance</a>
+      <a href="gallery.html" class="btn btn-sm btn-outline">素材库</a>
+      <a href="maintenance.html" class="btn btn-sm btn-outline">维护</a>
     </div>
   </header>
 
@@ -130,19 +130,19 @@
   <div class="tab-bar">
     <button class="tab active" data-tab="all">全部</button>
     <button class="tab" data-tab="missing">缺失缩略图</button>
-    <button class="tab" data-tab="metadata">Metadata 查看</button>
+    <button class="tab" data-tab="metadata">元数据</button>
   </div>
 
   <div id="statusEl" class="gallery-status"></div>
 
-  <!-- Tab 1: 全部 + 缺失缩略图 -->
+  <!-- 标签 1：全部 + 缺失缩略图 -->
   <div id="gridContainer">
     <div id="assetGrid" class="gallery-grid"></div>
   </div>
 
-  <!-- Tab 2: Metadata 查看 -->
+  <!-- 标签 2：元数据 -->
   <div id="metadataContainer" hidden>
-    <p style="color:#666;font-size:0.85rem;">从列表中点击任意资产卡片，可在此查看完整 metadata。</p>
+    <p style="color:#666;font-size:0.85rem;">从列表中点击任意资产卡片，可在此查看完整元数据。</p>
     <div id="metadataPanel" class="metadata-panel" hidden>
       <pre id="metadataContent"></pre>
     </div>
@@ -156,7 +156,7 @@
 <!-- 口令浮层 -->
 <div id="tokenOverlay" class="overlay" hidden>
   <div class="overlay-card">
-    <p class="overlay-text">请输入口令访问 Asset Library</p>
+    <p class="overlay-text">请输入口令访问资产库</p>
     <input id="tokenInput" class="token-input" type="password">
     <div class="overlay-actions">
       <button id="tokenCancelBtn" class="btn btn-sm btn-outline" type="button">取消</button>

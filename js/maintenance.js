@@ -88,7 +88,7 @@ scanBtn.addEventListener("click", async () => {
   logEl.hidden = false;
   logEl.innerHTML = "";
 
-  log(logEl, "开始扫描 images/…", "info");
+  log(logEl, "开始扫描 R2…", "info");
   scanBtn.disabled = true;
 
   try {
@@ -124,7 +124,7 @@ buildIndexBtn.addEventListener("click", async () => {
   logEl.hidden = false;
   logEl.innerHTML = "";
 
-  log(logEl, "开始构建 Asset Index…", "info");
+  log(logEl, "开始构建资产索引…", "info");
   buildIndexBtn.disabled = true;
 
   try {
@@ -143,7 +143,7 @@ buildIndexBtn.addEventListener("click", async () => {
     log(logEl, `缺失缩略图: ${data.missing_thumbnails}`, "info");
 
     if (data.missing_thumbnails > 0) {
-      log(logEl, `可以使用 "Generate Missing Thumbnails" 生成缺失的缩略图`, "info");
+      log(logEl, `可以使用“生成缺失缩略图”功能生成缺失的缩略图`, "info");
     }
 
     loadStats(token);
@@ -232,7 +232,7 @@ generateThumbnailsBtn.addEventListener("click", async () => {
     const unprocessableCount = missingList.length - processableList.length;
 
     if (unprocessableCount > 0) {
-      log(logEl, `跳过 ${unprocessableCount} 张缺少 Asset ID 的图片，请先执行 Build Asset Index`, "info");
+      log(logEl, `跳过 ${unprocessableCount} 张缺少资产 ID 的图片，请先执行“构建资产索引”`, "info");
     }
 
     if (processableList.length === 0) {
@@ -264,16 +264,16 @@ generateThumbnailsBtn.addEventListener("click", async () => {
     log(logEl, `完成！成功: ${successCount}, 失败: ${failCount}`, successCount === processableList.length ? "success" : "info");
 
     if (successCount > 0) {
-      log(logEl, "重新构建 Asset Index…", "info");
+      log(logEl, "重新构建资产索引…", "info");
       const buildRes = await fetch("/api/asset-index/build", {
         method: "POST",
         headers: { "X-Upload-Token": token },
       });
       if (buildRes.ok) {
-        log(logEl, "Asset Index 已更新", "success");
+        log(logEl, "资产索引已更新", "success");
         loadStats(token);
       } else {
-        log(logEl, "Asset Index 更新失败，请手动点击 Scan R2", "error");
+        log(logEl, "资产索引更新失败，请手动点击“扫描图片”", "error");
       }
     }
 

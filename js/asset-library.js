@@ -38,7 +38,7 @@ function init() {
 
 // Load Asset Index
 async function loadAssetIndex() {
-  setStatus("加载 Asset Index...");
+  setStatus("加载资产索引...");
   try {
     const res = await fetch("/api/asset-index", {
       headers: { "X-Upload-Token": getStoredToken() },
@@ -51,7 +51,7 @@ async function loadAssetIndex() {
     }
 
     if (res.status === 404) {
-      setStatus("Asset Index 未构建，请点击「构建索引」");
+      setStatus("资产索引未构建，请点击「构建索引」");
       allAssets = [];
       renderCurrentTab();
       return;
@@ -73,7 +73,7 @@ async function buildIndex() {
   const token = getStoredToken();
   if (!token) return;
 
-  setStatus("正在构建 Asset Index...");
+  setStatus("正在构建资产索引...");
   buildIndexBtn.disabled = true;
 
   try {

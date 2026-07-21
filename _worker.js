@@ -1245,6 +1245,7 @@ function isImage(contentType) {
 
 /**
  * 扫描 Bucket 中所有图片（排除系统目录）
+ * 同时支持 contentType 和文件扩展名判断，兼容 R2 直传文件
  */
 async function scanAllImages(env) {
   const images = [];
@@ -1260,7 +1261,7 @@ async function scanAllImages(env) {
       for (const obj of listed.objects) {
         if (obj.customMetadata && obj.customMetadata["deleted"] === "true") continue;
         if (isSystemPath(obj.key)) continue;
-        if (!isImage(obj.httpMetadata?.contentType)) continue;
+        if (!isImage(obj.httpMetadata?.contentType) && !isImageFile(obj.key)) continue;
         images.push(obj);
       }
 
@@ -1271,6 +1272,14 @@ async function scanAllImages(env) {
   }
 
   return images;
+}
+
+/**
+ * 根据扩展名判断是否为图片文件（兼容无 contentType 的 R2 直传文件）
+ */
+function isImageFile(key) {
+  const ext = key.split(".").pop()?.toLowerCase();
+  return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "heif", "avif"].includes(ext);
 }
 
 /**

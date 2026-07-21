@@ -75,83 +75,84 @@
 
   <header class="gallery-header">
     <a href="/" class="gallery-back">← 上传</a>
-    <h1>Maintenance</h1>
+    <h1>系统维护</h1>
     <div class="gallery-actions">
       <a href="gallery.html" class="btn btn-sm btn-outline">素材库</a>
+      <a href="asset-library.html" class="btn btn-sm btn-outline">资产库</a>
     </div>
   </header>
 
-  <!-- Statistics -->
+  <!-- 统计 -->
   <section class="maintenance-section">
-    <h2>Statistics</h2>
+    <h2>统计概览</h2>
     <div id="statsGrid" class="stat-grid">
       <div class="stat-card">
-        <div class="stat-label">Images</div>
+        <div class="stat-label">图片总数</div>
         <div class="stat-value" id="statImages">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Thumbnails</div>
+        <div class="stat-label">缩略图数</div>
         <div class="stat-value" id="statThumbnails">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Missing Thumbnails</div>
+        <div class="stat-label">缺失缩略图</div>
         <div class="stat-value" id="statMissing">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Storage</div>
+        <div class="stat-label">存储占用</div>
         <div class="stat-value" id="statStorage">-</div>
         <div class="stat-sub" id="statStorageBytes"></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Latest Upload</div>
+        <div class="stat-label">最近上传</div>
         <div class="stat-value" id="statLatest" style="font-size:0.9rem;">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Oldest Upload</div>
+        <div class="stat-label">最早上传</div>
         <div class="stat-value" id="statOldest" style="font-size:0.9rem;">-</div>
       </div>
     </div>
-    <button id="refreshStatsBtn" class="btn btn-sm btn-outline">Refresh</button>
+    <button id="refreshStatsBtn" class="btn btn-sm btn-outline">刷新统计</button>
   </section>
 
-  <!-- Scan R2 -->
+  <!-- 扫描 R2 -->
   <section class="maintenance-section">
-    <h2>Scan R2</h2>
-    <p>重新扫描 images/ 和 media/original/ 目录，发现新增图片并同步素材库。</p>
+    <h2>扫描 R2</h2>
+    <p>全量扫描 R2 Bucket 中的所有图片（自动排除系统目录），发现新增图片并同步素材库。</p>
     <div class="action-row">
-      <button id="scanBtn" class="btn btn-sm btn-primary">Scan images/</button>
-      <button id="buildIndexBtn" class="btn btn-sm btn-outline">Build Asset Index</button>
+      <button id="scanBtn" class="btn btn-sm btn-primary">扫描图片</button>
+      <button id="buildIndexBtn" class="btn btn-sm btn-outline">构建资产索引</button>
     </div>
     <div id="scanLog" class="log-area" hidden></div>
     <div id="buildIndexLog" class="log-area" hidden></div>
   </section>
 
-  <!-- Scan Missing Thumbnails -->
+  <!-- 扫描缺失缩略图 -->
   <section class="maintenance-section">
-    <h2>Scan Missing Thumbnails</h2>
-    <p>扫描并列出所有缺失缩略图的图片（仅查看清单）。如需自动生成，请使用下方的 Generate Missing Thumbnails。</p>
+    <h2>扫描缺失缩略图</h2>
+    <p>扫描并列出所有缺失缩略图的图片（仅查看清单）。如需自动生成，请使用下方的生成缺失缩略图。</p>
     <div class="action-row">
-      <button id="scanMissingBtn" class="btn btn-sm btn-outline">Scan Missing</button>
+      <button id="scanMissingBtn" class="btn btn-sm btn-outline">扫描缺失</button>
     </div>
     <div id="scanMissingLog" class="log-area" hidden></div>
   </section>
 
-  <!-- Generate Missing Thumbnails -->
+  <!-- 生成缺失缩略图 -->
   <section class="maintenance-section">
-    <h2>Generate Missing Thumbnails</h2>
-    <p>在浏览器中自动生成并上传缺失的缩略图（使用 Canvas 处理，每张约 400px 长边）。生成前请确保已执行 Build Asset Index。</p>
+    <h2>生成缺失缩略图</h2>
+    <p>在浏览器中自动生成并上传缺失的缩略图（使用 Canvas 处理，每张约 400px 长边）。生成前请确保已执行“构建资产索引”。</p>
     <div class="action-row">
-      <button id="generateThumbnailsBtn" class="btn btn-sm btn-primary">Generate &amp; Upload</button>
+      <button id="generateThumbnailsBtn" class="btn btn-sm btn-primary">生成并上传</button>
     </div>
     <div id="generateLog" class="log-area" hidden></div>
   </section>
 
-  <!-- Clean Orphan Thumbnails -->
+  <!-- 清理孤儿缩略图 -->
   <section class="maintenance-section">
-    <h2>Clean Orphan Thumbnails</h2>
+    <h2>清理孤儿缩略图</h2>
     <p>删除没有对应原图的缩略图。每次最多清理 100 个，可重复执行。</p>
     <div class="action-row">
-      <button id="cleanOrphansBtn" class="btn btn-sm btn-primary">Clean Orphan Thumbnails</button>
+      <button id="cleanOrphansBtn" class="btn btn-sm btn-primary">清理孤儿缩略图</button>
     </div>
     <div id="cleanOrphansLog" class="log-area" hidden></div>
   </section>
@@ -163,7 +164,7 @@
 <!-- 口令浮层 -->
 <div id="tokenOverlay" class="overlay" hidden>
   <div class="overlay-card">
-    <p class="overlay-text">请输入口令访问 Maintenance</p>
+    <p class="overlay-text">请输入口令访问系统维护</p>
     <input id="tokenInput" class="token-input" type="password">
     <div class="overlay-actions">
       <button id="tokenCancelBtn" class="btn btn-sm btn-outline" type="button">取消</button>

@@ -52,20 +52,32 @@ body {
 /* 导航 */
 
 .nav {
-  margin-top: 12px;
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .nav-link {
   font-size: 13px;
   color: var(--color-muted);
   text-decoration: none;
-  border-bottom: 1px solid var(--color-line);
-  padding-bottom: 2px;
-  transition: color 0.15s ease;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
 }
 
 .nav-link:hover {
   color: var(--color-text);
+  border-color: var(--color-line);
+}
+
+.nav-link.active {
+  color: var(--color-text);
+  background: #f0f0ec;
+  border-color: var(--color-line);
 }
 
 /* 上传区 */
