@@ -331,12 +331,13 @@ async function generateAndUploadThumbnail(imageKey, assetId, token) {
   const img = await loadImage(imageUrl);
   const thumbnailBlob = await generateThumbnail(img);
 
-  const thumbKey = `assets/thumbnails/${assetId}.webp`;
-  const uploadUrl = "/upload";
+  // 使用专门的缩略图上传 API
+  const uploadUrl = "/api/upload-thumbnail";
 
   const formData = new FormData();
-  formData.append("file", thumbnailBlob, `${assetId}.webp`);
-  formData.append("thumbnail_key", thumbKey);
+  formData.append("thumbnail", thumbnailBlob, `${assetId}.webp`);
+  formData.append("asset_id", assetId);
+  formData.append("original_key", imageKey);
 
   const res = await fetch(uploadUrl, {
     method: "POST",
