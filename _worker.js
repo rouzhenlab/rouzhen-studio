@@ -1351,7 +1351,7 @@ function isSystemPath(key) {
 }
 
 /**
- * GET /api/asset-index — 获取 Asset Index 列表
+ * GET /api/asset-index — 获取 Asset Index 列表（包含完整 metadata）
  */
 async function handleGetAssetIndex(request, env) {
   const token = request.headers.get("X-Upload-Token") || "";
@@ -1366,7 +1366,42 @@ async function handleGetAssetIndex(request, env) {
     }
 
     const index = JSON.parse(await obj.text());
-    return jsonResponse(index);
+    const detailedAssets = [];
+
+    // 加载每个 asset 的完整 metadata
+    for (const summary of index.assets || []) {
+      try {
+        const metaObj = await env.BUCKET.get(`assets/metadata/${summary.asset_id}.json`);
+        if (metaObj) {
+          const metadata = JSON.parse(await metaObj.text());
+          detailedAssets.push(metadata);
+        } else {
+          // 单个 metadata 文件不存在时返回 summary
+          detailedAssets.push({
+            asset_id: summary.asset_id,
+            original_path: summary.original_path,
+            source: summary.source,
+            thumbnail_status: summary.thumbnail_status,
+            thumbnail_path: "",
+          });
+        }
+      } catch (err) {
+        detailedAssets.push({
+          asset_id: summary.asset_id,
+          original_path: summary.original_path,
+          source: summary.source,
+          thumbnail_status: summary.thumbnail_status,
+          thumbnail_path: "",
+        });
+      }
+    }
+
+    return jsonResponse({
+      version: index.version,
+      generated_at: index.generated_at,
+      total: detailedAssets.length,
+      assets: detailedAssets,
+    });
   } catch (err) {
     return jsonResponse({ error: "fetch-index-failed" }, 500);
   }

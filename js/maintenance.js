@@ -212,6 +212,7 @@ generateThumbnailsBtn.addEventListener("click", async () => {
   generateThumbnailsBtn.disabled = true;
 
   try {
+    // 第一步：先获取缺失缩略图清单
     const res = await fetch("/api/maintenance/scan-missing-thumbnails", {
       method: "POST",
       headers: { "X-Upload-Token": token },
@@ -228,11 +229,42 @@ generateThumbnailsBtn.addEventListener("click", async () => {
       return;
     }
 
-    const processableList = missingList.filter(item => item.asset_id && item.asset_id.trim());
-    const unprocessableCount = missingList.length - processableList.length;
+    // 第二步：先分离已有/无 asset_id 的图片
+    let processableList = missingList.filter(item => item.asset_id && item.asset_id.trim());
+    let unprocessableCount = missingList.length - processableList.length;
+
+    // 第三步：自动构建资产索引（如果有无 asset_id 的图片）
+    if (unprocessableCount > 0) {
+      log(logEl, `检测到 ${unprocessableCount} 张图片缺少资产 ID，正在自动构建索引…`, "info");
+      try {
+        const buildRes = await fetch("/api/asset-index/build", {
+          method: "POST",
+          headers: { "X-Upload-Token": token },
+        });
+        if (buildRes.ok) {
+          log(logEl, "资产索引构建成功", "success");
+          // 重新获取缺失缩略图清单
+          const res2 = await fetch("/api/maintenance/scan-missing-thumbnails", {
+            method: "POST",
+            headers: { "X-Upload-Token": token },
+          });
+          if (res2.ok) {
+            const data2 = await res2.json();
+            const newMissingList = data2.missing_list || [];
+            processableList = newMissingList.filter(item => item.asset_id && item.asset_id.trim());
+            unprocessableCount = newMissingList.length - processableList.length;
+            log(logEl, `重新扫描完成：可处理 ${processableList.length} 张，仍有 ${unprocessableCount} 张无法处理`, "info");
+          }
+        } else {
+          log(logEl, "资产索引构建失败，跳过无 ID 的图片", "error");
+        }
+      } catch (err) {
+        log(logEl, `构建资产索引出错: ${err.message}`, "error");
+      }
+    }
 
     if (unprocessableCount > 0) {
-      log(logEl, `跳过 ${unprocessableCount} 张缺少资产 ID 的图片，请先执行“构建资产索引”`, "info");
+      log(logEl, `跳过 ${unprocessableCount} 张缺少资产 ID 的图片`, "info");
     }
 
     if (processableList.length === 0) {
@@ -242,26 +274,33 @@ generateThumbnailsBtn.addEventListener("click", async () => {
     }
 
     log(logEl, `需要生成 ${processableList.length} 张缩略图…`, "info");
+    log(logEl, "(串行处理，每张约 1-3 秒)", "info");
 
     let successCount = 0;
     let failCount = 0;
+    const totalStart = Date.now();
 
     for (let i = 0; i < processableList.length; i++) {
       const item = processableList[i];
-      log(logEl, `[${i + 1}/${processableList.length}] 处理: ${item.key}`, "info");
+      const start = Date.now();
 
       try {
-        await generateAndUploadThumbnail(item.key, item.asset_id, token, logEl);
+        await generateAndUploadThumbnail(item.key, item.asset_id, token);
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+        const totalElapsed = ((Date.now() - totalStart) / 1000).toFixed(1);
+        const avg = (parseFloat(totalElapsed) / (i + 1)).toFixed(1);
         successCount++;
-        log(logEl, `  ✓ 成功`, "success");
+        log(logEl, `[${i + 1}/${processableList.length}] ✓ ${item.key} (${elapsed}s, 平均 ${avg}s)`, "success");
       } catch (err) {
+        const elapsed = ((Date.now() - start) / 1000).toFixed(1);
         failCount++;
-        log(logEl, `  ✗ 失败: ${err.message}`, "error");
+        log(logEl, `[${i + 1}/${processableList.length}] ✗ ${item.key} (${elapsed}s) - ${err.message}`, "error");
       }
     }
 
+    const totalTime = ((Date.now() - totalStart) / 1000).toFixed(1);
     log(logEl, "", "info");
-    log(logEl, `完成！成功: ${successCount}, 失败: ${failCount}`, successCount === processableList.length ? "success" : "info");
+    log(logEl, `完成！成功: ${successCount}, 失败: ${failCount}, 总耗时: ${totalTime}s`, successCount === processableList.length ? "success" : "info");
 
     if (successCount > 0) {
       log(logEl, "重新构建资产索引…", "info");
@@ -284,7 +323,7 @@ generateThumbnailsBtn.addEventListener("click", async () => {
   }
 });
 
-async function generateAndUploadThumbnail(imageKey, assetId, token, logEl) {
+async function generateAndUploadThumbnail(imageKey, assetId, token) {
   const baseUrl = window.location.origin;
   // 使用 /api/file/ 代理绕过 R2 CORS 限制
   const imageUrl = `${baseUrl}/api/file/${imageKey}`;
