@@ -324,9 +324,8 @@ generateThumbnailsBtn.addEventListener("click", async () => {
 });
 
 async function generateAndUploadThumbnail(imageKey, assetId, token) {
-  const baseUrl = window.location.origin;
-  // 使用 /api/file/ 代理绕过 R2 CORS 限制
-  const imageUrl = `${baseUrl}/api/file/${imageKey}`;
+  // 直接从 R2 公共 URL 加载图片（已配置 CORS）
+  const imageUrl = `https://pub-d925d0cb281a418d91ad6617fc10bc86.r2.dev/${imageKey}`;
 
   const img = await loadImage(imageUrl);
   const thumbnailBlob = await generateThumbnail(img);
