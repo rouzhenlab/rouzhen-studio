@@ -285,7 +285,7 @@ generateThumbnailsBtn.addEventListener("click", async () => {
       const start = Date.now();
 
       try {
-        await generateAndUploadThumbnail(item.key, item.asset_id, token);
+        await generateAndUploadThumbnail(item.key, item.asset_id, token, (msg) => log(logEl, msg, "info"));
         const elapsed = ((Date.now() - start) / 1000).toFixed(1);
         const totalElapsed = ((Date.now() - totalStart) / 1000).toFixed(1);
         const avg = (parseFloat(totalElapsed) / (i + 1)).toFixed(1);
@@ -323,13 +323,20 @@ generateThumbnailsBtn.addEventListener("click", async () => {
   }
 });
 
-async function generateAndUploadThumbnail(imageKey, assetId, token) {
-  const baseUrl = window.location.origin;
-  // 使用 /api/file/ 代理绕过 R2 CORS 限制
-  const imageUrl = `${baseUrl}/api/file/${imageKey}`;
+async function generateAndUploadThumbnail(imageKey, assetId, token, logFn) {
+  // 直接从 R2 公共 URL 加载图片（已配置 CORS）
+  const imageUrl = `https://pub-d925d0cb281a418d91ad6617fc10bc86.r2.dev/${imageKey}`;
 
+  const t0 = Date.now();
   const img = await loadImage(imageUrl);
+  const t1 = Date.now();
+  const loadTime = ((t1 - t0) / 1000).toFixed(1);
+  if (logFn) logFn(`  └ 加载图片: ${loadTime}s (${img.width}x${img.height})`);
+
   const thumbnailBlob = await generateThumbnail(img);
+  const t2 = Date.now();
+  const canvasTime = ((t2 - t1) / 1000).toFixed(1);
+  if (logFn) logFn(`  └ Canvas处理: ${canvasTime}s (${thumbnailBlob.size}bytes)`);
 
   // 使用专门的缩略图上传 API
   const uploadUrl = "/api/upload-thumbnail";
@@ -344,6 +351,9 @@ async function generateAndUploadThumbnail(imageKey, assetId, token) {
     headers: { "X-Upload-Token": token },
     body: formData,
   });
+  const t3 = Date.now();
+  const uploadTime = ((t3 - t2) / 1000).toFixed(1);
+  if (logFn) logFn(`  └ 上传缩略图: ${uploadTime}s`);
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "unknown");
