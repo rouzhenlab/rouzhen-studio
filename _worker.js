@@ -56,6 +56,11 @@ export default {
       return handleGenerateIndex(request, env);
     }
 
+    // v0.5.0: Asset Resolver —— 把文章内容里的 {{asset:id}} 占位符解析成真实 <img> 标签
+    if (url.pathname === "/api/resolve-assets" && request.method === "POST") {
+      return handleResolveAssets(request, env);
+    }
+
     if (url.pathname === "/library.json" && request.method === "GET") {
       return handleGetLibrary(env);
     }
@@ -241,6 +246,38 @@ async function handleUpload(request, env) {
     );
   } catch (err) {
     // metadata 写入失败不影响上传
+  }
+
+  // 同步更新总索引 assets/metadata/index.json，
+  // 避免新上传的图片要等下一次手动"重建索引"才能在素材库里显示缩略图
+  try {
+    let index = { version: "0.3.18", assets: [] };
+    const indexObj = await env.BUCKET.get("assets/metadata/index.json");
+    if (indexObj) {
+      index = JSON.parse(await indexObj.text());
+      if (!Array.isArray(index.assets)) index.assets = [];
+    }
+    const existingIdx = index.assets.findIndex(a => a.asset_id === assetId);
+    const entry = {
+      asset_id: assetId,
+      original_path: imageKey,
+      source: "upload",
+      thumbnail_status: metadata.thumbnail_status,
+    };
+    if (existingIdx !== -1) {
+      index.assets[existingIdx] = entry;
+    } else {
+      index.assets.push(entry);
+    }
+    index.generated_at = now.toISOString();
+    index.total = index.assets.length;
+    await env.BUCKET.put(
+      "assets/metadata/index.json",
+      JSON.stringify(index, null, 2),
+      { httpMetadata: { contentType: "application/json" } }
+    );
+  } catch (err) {
+    // 索引更新失败不影响本次上传，最坏情况退回"要手动重建索引"
   }
 
   const publicUrl = `${env.PUBLIC_BASE_URL}/${imageKey}`;
@@ -446,6 +483,7 @@ async function handleListAssets(request, env) {
 
     assets.push({
       id: obj.key,
+      asset_id: assetId || null,
       filename,
       key: obj.key,
       url: publicUrl,
@@ -472,6 +510,86 @@ async function handleListAssets(request, env) {
 // POST /api/generate-index — 生成 library.json 索引到 R2
 // v0.3.18: 全量扫描 Bucket，排除系统目录，检查两种缩略图路径
 // ------------------------------
+// ------------------------------
+// v0.5.0: Asset Resolver
+// 把文章内容里的 {{asset:asset_id}} 占位符解析成真实的 <img> 标签。
+// 这是 Studio 创作工作台的地基：编辑器里只存占位符，
+// 只有在这一步才会读 metadata、拼真实 URL，实现"内容"和"存储地址"解耦。
+// ------------------------------
+const ASSET_PLACEHOLDER_RE = /\{\{asset:([a-zA-Z0-9_]+)\}\}/g;
+
+async function handleResolveAssets(request, env) {
+  const token = request.headers.get("X-Upload-Token") || "";
+  if (!env.UPLOAD_TOKEN || token !== env.UPLOAD_TOKEN) {
+    return jsonResponse({ error: "unauthorized" }, 401);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (err) {
+    return jsonResponse({ error: "invalid-json" }, 400);
+  }
+
+  const content = typeof body.content === "string" ? body.content : "";
+  const sourcePath = typeof body.sourcePath === "string" ? body.sourcePath : null;
+  const recordUsage = Boolean(body.recordUsage) && Boolean(sourcePath);
+
+  // 找出正文里引用到的所有 asset_id（去重）
+  const foundIds = new Set();
+  let match;
+  ASSET_PLACEHOLDER_RE.lastIndex = 0;
+  while ((match = ASSET_PLACEHOLDER_RE.exec(content)) !== null) {
+    foundIds.add(match[1]);
+  }
+
+  // 并行读取涉及到的 metadata，取 original_path 拼出真实 URL
+  const resolvedMap = new Map(); // asset_id -> url | null（null 表示没找到对应素材）
+  await Promise.all(
+    Array.from(foundIds).map(async (assetId) => {
+      try {
+        const metaObj = await env.BUCKET.get(`assets/metadata/${assetId}.json`);
+        if (!metaObj) {
+          resolvedMap.set(assetId, null);
+          return;
+        }
+        const meta = JSON.parse(await metaObj.text());
+        const url = meta.original_path ? `${env.PUBLIC_BASE_URL}/${meta.original_path}` : null;
+        resolvedMap.set(assetId, url);
+
+        // 记录引用关系（v0.5.0 只写入，不做查询页面）
+        if (recordUsage && url) {
+          const usedIn = Array.isArray(meta.used_in) ? meta.used_in : [];
+          if (!usedIn.includes(sourcePath)) {
+            usedIn.push(sourcePath);
+            meta.used_in = usedIn;
+            await env.BUCKET.put(
+              `assets/metadata/${assetId}.json`,
+              JSON.stringify(meta, null, 2),
+              { httpMetadata: { contentType: "application/json" } }
+            );
+          }
+        }
+      } catch (err) {
+        resolvedMap.set(assetId, null);
+      }
+    })
+  );
+
+  // 替换占位符：找到的资产 -> <img>；找不到的 -> 保留可见的提示注释，不静默丢失
+  const missing = [];
+  const resolved = content.replace(ASSET_PLACEHOLDER_RE, (full, assetId) => {
+    const url = resolvedMap.get(assetId);
+    if (url) {
+      return `<img src="${url}" alt="">`;
+    }
+    missing.push(assetId);
+    return `<!-- 未找到素材：${assetId} -->`;
+  });
+
+  return jsonResponse({ resolved, missing });
+}
+
 async function handleGenerateIndex(request, env) {
   // 口令校验
   const token = request.headers.get("X-Upload-Token") || "";

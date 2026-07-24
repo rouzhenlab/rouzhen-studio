@@ -460,7 +460,7 @@ function closeTokenOverlay() {
 
 tokenCancelBtn.addEventListener("click", () => {
   closeTokenOverlay();
-  window.location.href = "/";
+  window.location.href = "/assets/upload.html";
 });
 
 tokenConfirmBtn.addEventListener("click", () => {

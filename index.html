@@ -5,58 +5,104 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ROUZHEN Studio</title>
 <link rel="stylesheet" href="css/style.css">
+<style>
+  /* v0.5.0 Step 3：Dashboard —— Studio 唯一入口，只做两个入口 + 最近文章占位 */
+
+  .dashboard-container {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 64px 24px 40px;
+  }
+
+  .dashboard-title {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    margin: 0 0 40px;
+    color: var(--color-text);
+  }
+
+  .dashboard-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+
+  .dashboard-entry {
+    display: block;
+    text-decoration: none;
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 28px 20px;
+    text-align: center;
+    color: var(--color-text);
+    transition: box-shadow 0.15s ease;
+  }
+
+  .dashboard-entry:active {
+    opacity: 0.7;
+  }
+
+  .dashboard-entry-icon {
+    font-size: 22px;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .dashboard-entry-label {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .dashboard-recent {
+    border-top: 1px solid var(--color-line);
+    padding-top: 24px;
+  }
+
+  .dashboard-recent-title {
+    font-size: 13px;
+    color: var(--color-muted);
+    margin: 0 0 12px;
+  }
+
+  .dashboard-recent-empty {
+    font-size: 13px;
+    color: var(--color-muted);
+  }
+
+  @media (min-width: 600px) {
+    .dashboard-entries {
+      flex-direction: row;
+    }
+    .dashboard-entry {
+      flex: 1;
+    }
+  }
+</style>
 </head>
 <body>
 
-<main class="container">
+<main class="dashboard-container">
+  <h1 class="dashboard-title">ROUZHEN Studio</h1>
 
-  <header class="header">
-    <h1>ROUZHEN Studio</h1>
-    <nav class="nav">
-      <a href="/" class="nav-link active">上传</a>
-      <a href="gallery.html" class="nav-link">素材库</a>
-      <a href="maintenance.html" class="nav-link">维护</a>
-    </nav>
-  </header>
+  <div class="dashboard-entries">
+    <a href="article/editor.html" class="dashboard-entry">
+      <span class="dashboard-entry-icon">✦</span>
+      <span class="dashboard-entry-label">New Article</span>
+    </a>
+    <a href="assets/index.html" class="dashboard-entry">
+      <span class="dashboard-entry-icon">◇</span>
+      <span class="dashboard-entry-label">Add Assets</span>
+    </a>
+  </div>
 
-  <section class="upload-area">
-
-    <input type="file" id="fileInput" accept="image/*" multiple hidden>
-
-    <button id="selectBtn" class="btn btn-outline">选择图片</button>
-
-    <p class="size-hint">支持多选，建议单张 10MB 以下</p>
-
-    <div id="queueArea" class="queue-area" hidden></div>
-
-    <button id="uploadBtn" class="btn btn-primary" disabled>开始上传</button>
-
-  </section>
-
-  <section id="resultArea" class="result-area" hidden>
-
-    <div id="resultList" class="result-list"></div>
-
-    <button id="copyUrlBtn" class="btn btn-outline">复制全部链接</button>
-    <button id="copyMdBtn" class="btn btn-outline">复制全部 Markdown</button>
-
-  </section>
-
-  <p id="statusMsg" class="status-msg"></p>
-
+  <div class="dashboard-recent">
+    <p class="dashboard-recent-title">最近文章</p>
+    <p class="dashboard-recent-empty">文章列表功能开发中，暂未接入数据源</p>
+  </div>
 </main>
 
-<div id="tokenOverlay" class="overlay" hidden>
-  <div class="overlay-card">
-    <p class="overlay-text">请输入上传口令</p>
-    <input id="tokenInput" class="token-input" type="password">
-    <div class="overlay-actions">
-      <button id="tokenCancelBtn" class="btn btn-outline" type="button">取消</button>
-      <button id="tokenConfirmBtn" class="btn btn-primary" type="button">确认</button>
-    </div>
-  </div>
-</div>
-
-<script src="js/app.js"></script>
 </body>
 </html>

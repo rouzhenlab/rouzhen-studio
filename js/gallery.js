@@ -442,8 +442,8 @@ tokenInput.addEventListener("keydown", (event) => {
 
 tokenCancelBtn.addEventListener("click", () => {
   closeTokenOverlay();
-  // 取消后跳回首页
-  window.location.href = "/";
+  // 取消后跳回上传页（原本在根目录，现在挪到 assets/ 下）
+  window.location.href = "/assets/upload.html";
 });
 
 tokenConfirmBtn.addEventListener("click", () => {

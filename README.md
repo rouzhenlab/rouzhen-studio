@@ -1,8 +1,8 @@
 # ROUZHEN Studio
 
-ROUZHEN 的私人创作工作空间 V0.1。
+ROUZHEN 的私人创作工作空间。当前版本：v0.5.0。
 
-用手机浏览器上传图片到 Cloudflare R2，返回图片 URL 和 Markdown 格式，方便直接粘贴使用。
+以 Dashboard 为唯一入口的个人内容操作系统：素材进入 → 文章创作 → 插入素材 → 生成发布内容 → Website 展示。
 
 当前为单人使用的私人工具，不是面向多用户的产品。
 
@@ -12,15 +12,28 @@ ROUZHEN 的私人创作工作空间 V0.1。
 
 ```
 /
-├── index.html
-├── css/style.css
-├── js/app.js
-├── worker/worker.js
+├── index.html              ← Dashboard，唯一入口
+├── article/
+│   └── editor.html         ← Article Editor
+├── assets/
+│   ├── upload.html         ← 上传图片
+│   ├── index.html          ← 素材库浏览
+│   └── maintenance.html    ← 维护工具
+├── css/
+│   ├── style.css
+│   └── gallery.css
+├── js/
+│   ├── app.js               （upload.html 用）
+│   ├── gallery.js           （assets/index.html 用）
+│   ├── maintenance.js       （assets/maintenance.html 用）
+│   └── editor.js            （article/editor.html 用）
+├── _worker.js               ← Cloudflare Pages Functions，实际部署使用这个
+├── worker/worker.js         （早期独立 Worker 版本，已被 _worker.js 取代，未删除但不再使用）
+├── CHANGELOG.md
 └── README.md
 ```
 
-前端（`index.html` / `css` / `js`）部署在 Cloudflare Pages。
-`worker/worker.js` 是独立的 Cloudflare Worker，单独部署，不属于 Pages Functions。
+前端所有页面部署在 Cloudflare Pages，`_worker.js` 放在仓库根目录，会被 Cloudflare Pages 自动识别为 Pages Functions，跟前端一起部署，不需要单独 `wrangler deploy`。
 
 ---
 

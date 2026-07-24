@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>素材库 — ROUZHEN Studio</title>
+<link rel="stylesheet" href="../css/gallery.css">
+</head>
+<body>
+
+<main class="gallery-container">
+
+  <header class="gallery-header">
+    <a href="/" class="gallery-back">← 首页</a>
+    <h1>素材库</h1>
+    <div class="gallery-actions">
+      <a href="upload.html" class="btn btn-sm btn-outline">上传</a>
+      <a href="maintenance.html" class="btn btn-sm btn-outline">维护</a>
+      <button id="selectAllBtn" class="btn btn-sm btn-outline" type="button">全选</button>
+      <button id="copySelectedBtn" class="btn btn-sm btn-primary" type="button" disabled>复制选中 Markdown</button>
+      <button id="downloadLibraryBtn" class="btn btn-sm btn-outline" type="button">⬇ 下载素材库</button>
+    </div>
+  </header>
+
+  <div id="galleryGrid" class="gallery-grid"></div>
+
+  <div id="loadMoreWrap" class="load-more" hidden>
+    <button id="loadMoreBtn" class="btn btn-sm btn-outline" type="button">加载更多</button>
+  </div>
+
+  <p id="galleryStatus" class="gallery-status"></p>
+
+</main>
+
+<!-- 口令浮层 -->
+<div id="tokenOverlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <p class="overlay-text">请输入口令查看素材库</p>
+    <input id="tokenInput" class="token-input" type="password">
+    <div class="overlay-actions">
+      <button id="tokenCancelBtn" class="btn btn-sm btn-outline" type="button">取消</button>
+      <button id="tokenConfirmBtn" class="btn btn-sm btn-primary" type="button">确认</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/gallery.js"></script>
+</body>
+</html>
