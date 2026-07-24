@@ -83,7 +83,9 @@ async function generateThumbnail(file) {
     blob = await canvasToBlob(canvas, "image/jpeg", 0.8);
   }
   const ext = blob.type === "image/webp" ? ".webp" : ".jpg";
-  return new File([blob], `thumb-${file.name}${ext}`, { type: blob.type });
+  const thumbnailFile = new File([blob], `thumb-${file.name}${ext}`, { type: blob.type });
+  // 顺带把原图真实宽高一起返回，供上传时写入 metadata（不用额外再读一次文件）
+  return { file: thumbnailFile, width, height };
 }
 
 // ------------------------------
@@ -209,10 +211,15 @@ async function startBatchUpload(token) {
     updateQueueItemStatus(item.id);
 
     try {
-      item.thumbnail = await generateThumbnail(item.file);
+      const thumbResult = await generateThumbnail(item.file);
+      item.thumbnail = thumbResult.file;
+      item.width = thumbResult.width;
+      item.height = thumbResult.height;
     } catch (err) {
       // HEIC 等格式可能失败，缩略图为 null 也继续上传
       item.thumbnail = null;
+      item.width = null;
+      item.height = null;
     }
 
     // 上传
@@ -221,7 +228,7 @@ async function startBatchUpload(token) {
     setStatus(`上传中 ${successCount + failCount + 1}/${uploadQueue.length}…`);
 
     try {
-      const result = await uploadSingleFile(item.file, item.thumbnail, token, batchId);
+      const result = await uploadSingleFile(item.file, item.thumbnail, item.width, item.height, token, batchId);
       item.status = "done";
       item.result = result;
       successCount++;
@@ -260,12 +267,14 @@ async function startBatchUpload(token) {
 // ------------------------------
 // 单文件上传
 // ------------------------------
-async function uploadSingleFile(file, thumbnail, token, batchId) {
+async function uploadSingleFile(file, thumbnail, width, height, token, batchId) {
   const formData = new FormData();
   formData.append("file", file);
   if (thumbnail) {
     formData.append("thumbnail", thumbnail);
   }
+  if (width) formData.append("width", String(width));
+  if (height) formData.append("height", String(height));
 
   const response = await fetch(CONFIG.WORKER_URL, {
     method: "POST",

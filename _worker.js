@@ -201,6 +201,14 @@ async function handleUpload(request, env) {
     }
   }
 
+  // 前端可选传入真实宽高（比如生成缩略图时用 createImageBitmap 已经读到的尺寸）
+  const rawWidth = formData.get("width");
+  const rawHeight = formData.get("height");
+  const parsedWidth = rawWidth ? parseInt(rawWidth, 10) : null;
+  const parsedHeight = rawHeight ? parseInt(rawHeight, 10) : null;
+  const width = Number.isFinite(parsedWidth) && parsedWidth > 0 ? parsedWidth : null;
+  const height = Number.isFinite(parsedHeight) && parsedHeight > 0 ? parsedHeight : null;
+
   // v0.3.18: 创建 metadata 文件
   const metadata = {
     asset_id: assetId,
@@ -210,8 +218,8 @@ async function handleUpload(request, env) {
     type: "image",
     mime: file.type,
     size: file.size,
-    width: null,
-    height: null,
+    width,
+    height,
     uploaded_at: now.toISOString(),
     thumbnail_status: thumbnailKey ? "generated" : "pending",
     thumbnail_path: thumbnailKey || "",
@@ -349,6 +357,8 @@ async function handleListAssets(request, env) {
 
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get("limit") || String(ASSETS_API_LIMIT), 10);
+  // cursor 约定为“已返回的数量”（偏移量），首次请求不带 cursor，即从 0 开始
+  const offset = parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
 
   // 加载 Asset Index 获取 original_path -> asset_id 映射
   const pathToAssetId = new Map();
@@ -376,14 +386,36 @@ async function handleListAssets(request, env) {
     return new Date(b.uploaded) - new Date(a.uploaded);
   });
 
-  // 简单分页
+  // 分页：从 offset 开始取 limit 条
   const pageLimit = Math.min(limit, 1000);
-  const pagedImages = allImages.slice(0, pageLimit);
-  const truncated = allImages.length > pageLimit;
+  const pagedImages = allImages.slice(offset, offset + pageLimit);
+  const nextOffset = offset + pagedImages.length;
+  const truncated = nextOffset < allImages.length;
 
   // 扫描两种缩略图索引
   const thumbnailIndex = await buildThumbnailIndex(env);
   const assetThumbnailIndex = await buildAssetThumbnailIndex(env);
+
+  // 并行读取本页涉及资产的 metadata，取 width/height（老资产可能没有对应文件或值为 null）
+  const dimensionsMap = new Map(); // asset_id -> { width, height }
+  await Promise.all(
+    pagedImages.map(async (obj) => {
+      const assetId = pathToAssetId.get(obj.key);
+      if (!assetId) return;
+      try {
+        const metaObj = await env.BUCKET.get(`assets/metadata/${assetId}.json`);
+        if (metaObj) {
+          const meta = JSON.parse(await metaObj.text());
+          dimensionsMap.set(assetId, {
+            width: typeof meta.width === "number" ? meta.width : null,
+            height: typeof meta.height === "number" ? meta.height : null,
+          });
+        }
+      } catch (err) {
+        // 读取失败按无尺寸信息处理
+      }
+    })
+  );
 
   const assets = [];
   for (const obj of pagedImages) {
@@ -407,6 +439,10 @@ async function handleListAssets(request, env) {
     }
 
     const uploadedAt = obj.uploaded ? obj.uploaded.toISOString() : null;
+    const dims = assetId ? dimensionsMap.get(assetId) : null;
+    const width = dims?.width ?? null;
+    const height = dims?.height ?? null;
+    const dimensions = width && height ? `${width} × ${height}` : null;
 
     assets.push({
       id: obj.key,
@@ -419,12 +455,15 @@ async function handleListAssets(request, env) {
       mime: obj.httpMetadata?.contentType || null,
       type: "image",
       markdown: `![${filename}](${publicUrl})`,
+      width,
+      height,
+      dimensions,
     });
   }
 
   return jsonResponse({
     assets,
-    cursor: truncated ? String(pageLimit) : null,
+    cursor: truncated ? String(nextOffset) : null,
     truncated,
   });
 }
@@ -1184,6 +1223,9 @@ async function handleBuildAssetIndex(request, env) {
             metadata.tags = existingMeta.tags;
           }
           if (existingMeta.created_at) metadata.created_at = existingMeta.created_at;
+          // 保留已有的宽高信息，避免重建索引把已回填的尺寸数据冲掉
+          if (typeof existingMeta.width === "number") metadata.width = existingMeta.width;
+          if (typeof existingMeta.height === "number") metadata.height = existingMeta.height;
           // 保留已有的缩略图状态
           if (existingMeta.thumbnail_status) metadata.thumbnail_status = existingMeta.thumbnail_status;
           if (existingMeta.thumbnail_path) metadata.thumbnail_path = existingMeta.thumbnail_path;
@@ -1354,6 +1396,9 @@ async function scanDirectory(env, prefix, existingMetadata, assets, now, source)
                 metadata.tags = existingMeta.tags;
               }
               if (existingMeta.created_at) metadata.created_at = existingMeta.created_at;
+              // 保留已有的宽高信息，避免重建索引把已回填的尺寸数据冲掉
+              if (typeof existingMeta.width === "number") metadata.width = existingMeta.width;
+              if (typeof existingMeta.height === "number") metadata.height = existingMeta.height;
             }
           } catch (err) {
             // 读取失败使用默认值

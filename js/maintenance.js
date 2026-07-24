@@ -285,7 +285,7 @@ generateThumbnailsBtn.addEventListener("click", async () => {
       const start = Date.now();
 
       try {
-        await generateAndUploadThumbnail(item.key, item.asset_id, token, (msg) => log(logEl, msg, "info"));
+        await generateAndUploadThumbnail(item.key, item.asset_id, item.url, token, (msg) => log(logEl, msg, "info"));
         const elapsed = ((Date.now() - start) / 1000).toFixed(1);
         const totalElapsed = ((Date.now() - totalStart) / 1000).toFixed(1);
         const avg = (parseFloat(totalElapsed) / (i + 1)).toFixed(1);
@@ -323,9 +323,9 @@ generateThumbnailsBtn.addEventListener("click", async () => {
   }
 });
 
-async function generateAndUploadThumbnail(imageKey, assetId, token, logFn) {
-  // 直接从 R2 公共 URL 加载图片（已配置 CORS）
-  const imageUrl = `https://pub-d925d0cb281a418d91ad6617fc10bc86.r2.dev/${imageKey}`;
+async function generateAndUploadThumbnail(imageKey, assetId, imageUrl, token, logFn) {
+  // 使用后端返回的真实公开地址（基于 Worker 环境变量 PUBLIC_BASE_URL 拼出），
+  // 不再由前端自行硬编码域名
 
   const t0 = Date.now();
   const img = await loadImage(imageUrl);

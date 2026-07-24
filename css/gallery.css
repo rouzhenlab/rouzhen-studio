@@ -182,6 +182,42 @@ body {
   white-space: nowrap;
 }
 
+.gallery-card-meta {
+  font-size: 10px;
+  color: var(--color-muted);
+  opacity: 0.75;
+  display: block;
+  margin-top: 2px;
+}
+
+.gallery-card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.card-action-btn {
+  flex: 1;
+  appearance: none;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 9px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.card-action-btn:active {
+  opacity: 0.7;
+}
+
+.card-action-btn--copied {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
 /* 加载更多 */
 
 .load-more {

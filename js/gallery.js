@@ -137,16 +137,36 @@ function renderGallery() {
       // thumbnail_url 可能为空，使用占位图
       const thumbSrc = asset.thumbnail_url || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>`;
 
+      const dimensionsText = asset.dimensions || "尺寸未知";
+      const uploadedTimeText = asset.uploaded_at
+        ? new Date(asset.uploaded_at).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+        : "";
+
       card.innerHTML = `
         <div class="gallery-card-check">
           <input type="checkbox" ${selectedKeys.has(asset.key) ? "checked" : ""}>
         </div>
         <img class="gallery-card-thumb" src="${thumbSrc}" alt="${asset.filename}"
+             loading="lazy" decoding="async"
              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22><rect fill=%22%23f0f0ec%22 width=%22150%22 height=%22150%22/><text x=%2275%22 y=%2280%22 text-anchor=%22middle%22 fill=%22%238a8a82%22 font-size=%2212%22>No Thumb</text></svg>'">
         <div class="gallery-card-info">
           <span class="gallery-card-name" title="${asset.filename}">${asset.filename}</span>
+          <span class="gallery-card-meta">${dimensionsText} · ${uploadedTimeText}</span>
+        </div>
+        <div class="gallery-card-actions">
+          <button type="button" class="card-action-btn" data-action="url">复制 URL</button>
+          <button type="button" class="card-action-btn" data-action="markdown">复制 Markdown</button>
+          <button type="button" class="card-action-btn" data-action="html">复制 HTML</button>
         </div>
       `;
+
+      // 单张图复制按钮：阻止冒泡，避免触发卡片选中
+      card.querySelectorAll(".card-action-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          copySingleAsset(asset, btn.dataset.action, btn);
+        });
+      });
 
       // 点击卡片切换选中
       card.addEventListener("click", (e) => {
@@ -164,6 +184,33 @@ function renderGallery() {
     }
 
     galleryGrid.appendChild(grid);
+  }
+}
+
+// ------------------------------
+// 单张图复制（URL / Markdown / HTML）
+// ------------------------------
+async function copySingleAsset(asset, action, btn) {
+  let text = "";
+  if (action === "url") {
+    text = asset.url;
+  } else if (action === "markdown") {
+    text = asset.markdown || `![${asset.filename}](${asset.url})`;
+  } else if (action === "html") {
+    text = `<img src="${asset.url}" alt="">`;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = btn.textContent;
+    btn.textContent = "已复制";
+    btn.classList.add("card-action-btn--copied");
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove("card-action-btn--copied");
+    }, 1200);
+  } catch (err) {
+    setStatus("复制失败，请长按选择文字");
   }
 }
 
